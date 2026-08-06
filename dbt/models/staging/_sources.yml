@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: app
+    description: Tables owned by the FastAPI app (written via SQLAlchemy/Alembic, not dbt).
+    schema: public
+    tables:
+      - name: events
+        description: Raw events as ingested by POST /events.
+        columns:
+          - name: id
+          - name: event_type
+          - name: user_id
+          - name: occurred_at
+          - name: properties

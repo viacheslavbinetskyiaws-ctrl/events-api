@@ -1,0 +1,14 @@
+auth:
+  username: app_user
+  database: eventsdb
+
+primary:
+  persistence:
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 123Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi

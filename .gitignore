@@ -1,0 +1,32 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Env / secrets
+.env
+*.env.local
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# App / run logs
+logs/
+
+# Terraform
+terraform/**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+
+# kubeconfig exports
+kubeconfig*.yaml
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

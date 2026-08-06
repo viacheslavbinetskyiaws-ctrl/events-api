@@ -1,0 +1,89 @@
+# Default values for events-api.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: events-api
+  pullPolicy: Never
+  tag: "local"
+
+serviceAccount:
+  create: false
+
+service:
+  type: ClusterIP
+  port: 8000
+
+# Not used (no controller installed) — kept only because NOTES.txt checks
+# .Values.ingress.enabled and .Values.httpRoute.enabled; removing these
+# blocks entirely (rather than leaving them disabled) would break template
+# rendering with a nil-pointer error.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+httpRoute:
+  enabled: false
+  annotations: {}
+  parentRefs:
+    - name: gateway
+      sectionName: http
+  hostnames:
+    - chart-example.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /headers
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+# Not used, kept disabled for the same reason as ingress/httpRoute above —
+# deployment.yaml checks .Values.autoscaling.enabled.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+config:
+  appName: events-api
+  appEnvironment: kind
+  appLogLevel: INFO
+
+secrets:
+  databaseUrl: "postgresql+asyncpg://events:events@postgres:5432/events"

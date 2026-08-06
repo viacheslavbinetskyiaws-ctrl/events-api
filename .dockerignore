@@ -1,0 +1,14 @@
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.git
+tests
+dbt
+docker
+k8s
+terraform
+PLAN.md
+README.md
+.env

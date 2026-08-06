@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: events-api
+  namespace: events-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: events-api
+  template:
+    metadata:
+      labels:
+        app: events-api
+    spec:
+      containers:
+        - name: events-api
+          image: events-api:local
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: events-api-config
+            - secretRef:
+                name: events-api-secrets
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5

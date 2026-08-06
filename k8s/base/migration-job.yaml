@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: events-api-migrate
+  namespace: events-api
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: events-api:local
+          imagePullPolicy: Never
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: events-api-config
+            - secretRef:
+                name: events-api-secrets

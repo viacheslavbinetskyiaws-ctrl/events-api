@@ -1,0 +1,23 @@
+name: events_analytics
+version: "1.0.0"
+config-version: 2
+
+profile: events_analytics
+
+model-paths: ["models"]
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  events_analytics:
+    staging:
+      # Staging models just clean/cast raw rows — no reason to pay storage
+      # cost materializing them as tables; a view is enough.
+      +materialized: view
+    marts:
+      # The mart backs GET /analytics/daily, which will query it on every
+      # request — materializing as a table means that endpoint reads
+      # precomputed rows instead of recomputing the aggregation each time.
+      # Trade-off worth knowing: data is only as fresh as the last `dbt run`
+      # (no auto-refresh) — scheduling that is out of scope here, but it's
+      # the same "batch freshness" trade-off real data pipelines make.
+      +materialized: table

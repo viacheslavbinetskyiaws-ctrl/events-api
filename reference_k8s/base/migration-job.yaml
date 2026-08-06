@@ -1,0 +1,23 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: events-api-migrate
+  namespace: events-api
+spec:
+  backoffLimit: 6
+  # Apply this after postgres is up and ready, before the app Deployment —
+  # raw manifests have no built-in ordering, so that's on whoever applies
+  # them (see k8s/README or the deploy steps), not something encoded here.
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: events-api:local
+          imagePullPolicy: Never
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: events-api-config
+            - secretRef:
+                name: events-api-secrets

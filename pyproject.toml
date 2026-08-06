@@ -1,0 +1,67 @@
+[project]
+name = "k8s-tf-dbt"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.18.5",
+    "asyncpg>=0.31.0",
+    "fastapi-swagger-dark>=0.0.9",
+    "fastapi[standard-no-fastapi-cloud-cli]>=0.139.2",
+    "pydantic-settings>=2.14.2",
+    "sqlalchemy[asyncio]>=2.0.51",
+]
+
+# dbt runs as its own periodic pipeline job, never inside the API server —
+# kept as an optional extra (not a base dependency) so the API's Docker
+# image doesn't bundle dbt's entire dependency tree for no reason. Local
+# dev installs it via `uv sync --extra dbt`.
+[project.optional-dependencies]
+dbt = [
+    "dbt-core>=1.12.0",
+    "dbt-postgres>=1.11.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.22",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+# app/core/db.py's async engine is a single process-wide global whose
+# connection pool binds to whichever event loop first uses it. pytest-asyncio
+# defaults to a new loop per test function, which breaks pool reuse across
+# tests (RuntimeError: attached to a different loop). Pinning one loop for
+# the whole session matches how a real deployment actually runs (one loop,
+# whole process lifetime) and avoids the mismatch entirely.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = [
+    "integration: requires a running Postgres (docker compose up -d postgres)",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+# Alembic-generated migration files use Alembic's own template/style, not
+# ours, and are meant to be immutable historical records once applied —
+# not something to keep reformatting every time a new one is generated.
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes (unused imports/names, undefined names)
+    "I",   # isort (import sorting/grouping)
+    "UP",  # pyupgrade (modern Python syntax)
+    "B",   # flake8-bugbear (common bug patterns)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

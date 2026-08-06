@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: events-api-config
+  namespace: events-api
+data:
+  APP_NAME: events-api
+  APP_ENVIRONMENT: kind
+  APP_LOG_LEVEL: INFO
