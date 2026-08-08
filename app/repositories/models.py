@@ -32,8 +32,14 @@ class EventORM(Base):
 
 
 class DailyEventCountORM(DBTBase):
+    """Read shape only — dbt owns this table's actual DDL (see
+    dbt/models/marts/daily_event_counts.sql), not Alembic. This class just
+    has to match whatever dbt actually creates, column for column.
+    """
+
     __tablename__ = "daily_event_counts"
 
+    tenant_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
     event_type: Mapped[str] = mapped_column(primary_key=True)
     utc_date: Mapped[date] = mapped_column(Date(), primary_key=True)
     event_count: Mapped[int] = mapped_column()

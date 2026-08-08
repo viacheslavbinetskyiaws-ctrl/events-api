@@ -33,7 +33,7 @@ test_list_events_delegates_to_repository:
 """
 
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -41,14 +41,17 @@ from app.domain.exceptions import DomainError
 from app.domain.schemas import EventCreate
 from app.services.events import EventService
 
+TENANT_ID = uuid4()
+
 
 async def test_ingest_calls_repository_add(mock_repository):
     service = EventService(mock_repository)
 
-    result = await service.ingest(EventCreate(event_type="signup", user_id="u1"))
+    result = await service.ingest(EventCreate(event_type="signup", user_id="u1"), TENANT_ID)
 
     mock_repository.add.assert_awaited_once()
     assert isinstance(result.id, UUID)
+    assert result.tenant_id == TENANT_ID
 
 
 async def test_ingest_honors_supplied_occurred_at(mock_repository):
@@ -56,7 +59,7 @@ async def test_ingest_honors_supplied_occurred_at(mock_repository):
 
     occurred_at = datetime.now(UTC)
     result = await service.ingest(
-        EventCreate(event_type="signup", user_id="u1", occurred_at=occurred_at)
+        EventCreate(event_type="signup", user_id="u1", occurred_at=occurred_at), TENANT_ID
     )
 
     mock_repository.add.assert_awaited_once()
@@ -68,9 +71,20 @@ async def test_ingest_rejects_blank_event_type(mock_repository):
     service = EventService(mock_repository)
 
     with pytest.raises(DomainError) as e_info:
-        await service.ingest(EventCreate(event_type="", user_id="u1"))
+        await service.ingest(EventCreate(event_type="", user_id="u1"), TENANT_ID)
 
     assert str(e_info.value) == "event_type must not be blank"
+
+    mock_repository.add.assert_not_awaited()
+
+
+async def test_ingest_rejects_missing_tenant_id(mock_repository):
+    service = EventService(mock_repository)
+
+    with pytest.raises(DomainError) as e_info:
+        await service.ingest(EventCreate(event_type="signup", user_id="u1"), None)
+
+    assert str(e_info.value) == "X-Tenant-ID header is required"
 
     mock_repository.add.assert_not_awaited()
 
@@ -79,14 +93,25 @@ async def test_list_events_rejects_negative_offset(mock_repository):
     service = EventService(mock_repository)
 
     with pytest.raises(DomainError) as e_info:
-        await service.list_events(offset=-1)
+        await service.list_events(TENANT_ID, offset=-1)
 
     assert str(e_info.value) == "offset or limit values are invalid"
+
+
+async def test_list_events_rejects_missing_tenant_id(mock_repository):
+    service = EventService(mock_repository)
+
+    with pytest.raises(DomainError) as e_info:
+        await service.list_events(None)
+
+    assert str(e_info.value) == "X-Tenant-ID header is required"
+
+    mock_repository.list.assert_not_awaited()
 
 
 async def test_list_events_delegates_to_repository(mock_repository):
     service = EventService(mock_repository)
 
-    await service.list_events(limit=10, offset=5)
+    await service.list_events(TENANT_ID, limit=10, offset=5)
 
-    mock_repository.list.assert_awaited_once_with(10, 5)
+    mock_repository.list.assert_awaited_once_with(TENANT_ID, 10, 5)

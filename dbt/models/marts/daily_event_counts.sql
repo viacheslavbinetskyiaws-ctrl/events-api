@@ -17,12 +17,19 @@
 -- including comments, before any SQL parsing — double-curly-brace syntax
 -- inside a comment line is still live Jinja, not inert text. That's why
 -- this comment spells out function names instead of writing the syntax.
+--
+-- Milestone 7: the grain changes from (event_type, utc_date) to
+-- (tenant_id, event_type, utc_date) — add tenant_id to both the select
+-- list and the group by. Without it, this aggregates across all tenants
+-- into one number per (event_type, utc_date), which is exactly the
+-- cross-tenant leak GET /analytics/daily isn't supposed to have.
 
 select
     -- your columns here
+    tenant_id,
     event_type,
     (occurred_at AT TIME ZONE 'UTC')::date as utc_date,
     count(event_type) as event_count
-    
+
 from {{ ref('stg_events') }}
-group by event_type, utc_date
+group by tenant_id, event_type, utc_date

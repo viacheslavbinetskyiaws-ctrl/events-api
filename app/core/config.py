@@ -10,12 +10,18 @@ class Settings(BaseSettings):
     APP_LOG_LEVEL=DEBUG. `database_url` defaults to the docker-compose
     Postgres service for local dev; override it for anything else (tests,
     CI, k8s, real AWS).
+
+    Connects as `events_app`, not the `events` owner role — since Milestone
+    7's RLS policy on `events`, the app is meant to run under enforced
+    row-level security. Migrations and dbt still connect as the owner role
+    (see migrations/env.py, dbt/profiles.yml) since they need DDL rights
+    and/or cross-tenant reads RLS would otherwise block.
     """
 
     app_name: str = "events-api"
     environment: str = "local"
     log_level: str = "INFO"
-    database_url: str = "postgresql+asyncpg://events:events@localhost:5432/events"
+    database_url: str = "postgresql+asyncpg://events_app:events_app@localhost:5432/events"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="APP_")
 

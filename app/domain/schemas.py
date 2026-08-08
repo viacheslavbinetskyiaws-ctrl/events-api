@@ -22,6 +22,7 @@ class Event(BaseModel):
     that split isn't earning its complexity yet."""
 
     id: UUID
+    tenant_id: UUID
     event_type: str
     user_id: str
     occurred_at: datetime
@@ -29,6 +30,7 @@ class Event(BaseModel):
 
 
 class DailyEventCount(BaseModel):
+    tenant_id: UUID
     event_type: str
     utc_date: date
     event_count: int

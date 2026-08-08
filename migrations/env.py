@@ -7,7 +7,6 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.core.config import get_settings
 from app.core.db import Base
 from app.repositories import models  # noqa: F401  (registers EventORM on Base.metadata)
 
@@ -20,13 +19,18 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Drive the DB URL from app settings (env vars) by default, so migrations
-# target the same database the app itself would connect to.
-# ALEMBIC_DATABASE_URL is an explicit escape hatch for anything that needs a
-# different target (the test suite's migration fixture, pointing this at
-# events_test instead).
+# Deliberately NOT derived from app.core.config.Settings.database_url: since
+# Milestone 7's RLS work, the app connects as the restricted events_app role
+# (subject to row-level security), while migrations need the events owner
+# role (a superuser here, so DDL/GRANT/CREATE ROLE work and RLS is always
+# bypassed). Defaulting to the app's own URL would try to run DDL as a role
+# that can't. ALEMBIC_DATABASE_URL is the escape hatch for anything that
+# needs a different target (the test suite's migration fixture, pointing
+# this at events_test instead).
 config.set_main_option(
-    "sqlalchemy.url", os.environ.get("ALEMBIC_DATABASE_URL") or get_settings().database_url
+    "sqlalchemy.url",
+    os.environ.get("ALEMBIC_DATABASE_URL")
+    or "postgresql+asyncpg://events:events@localhost:5432/events",
 )
 
 target_metadata = Base.metadata
@@ -35,6 +39,21 @@ target_metadata = Base.metadata
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
+
+
+def include_object(object, name, type_, reflected, compare_to):
+    """Keep autogenerate from proposing DROPs for tables Alembic doesn't own.
+
+    daily_event_counts (DBTBase, not Base) is deliberately excluded from
+    target_metadata — dbt owns its DDL via `dbt run`, not Alembic. Without
+    this filter, autogenerate sees any such table as an orphan ("reflected"
+    from the live DB, no `compare_to` in target_metadata) and proposes
+    dropping it. This applies to any future table managed outside Alembic,
+    not just this one.
+    """
+    if type_ == "table" and reflected and compare_to is None:
+        return False
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -55,6 +74,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -62,7 +82,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+    )
 
     with context.begin_transaction():
         context.run_migrations()

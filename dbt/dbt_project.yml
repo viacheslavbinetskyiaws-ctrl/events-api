@@ -21,3 +21,20 @@ models:
       # (no auto-refresh) — scheduling that is out of scope here, but it's
       # the same "batch freshness" trade-off real data pipelines make.
       +materialized: table
+      # `table` materialization drops and recreates the physical table on
+      # every run (confirmed directly: a one-time `GRANT SELECT ... TO
+      # events_app` from an Alembic migration was silently wiped by the
+      # next `dbt run`) — so a one-time GRANT can't be the source of truth.
+      # dbt's own `grants` config re-applies automatically after every
+      # rebuild, which is what actually keeps events_app able to read this.
+      +grants:
+        select: ["events_app"]
+      # Same underlying problem for RLS: policies are attached to the table
+      # object and vanish when dbt drops+recreates it. post-hook re-runs
+      # after every build (including full table swaps), so this survives
+      # every `dbt run`, not just the first one. FOR SELECT only — events_app
+      # has no INSERT/UPDATE grant here, this table is app-read-only.
+      +post-hook:
+        - "DROP POLICY IF EXISTS tenant_isolation ON {{ this }}"
+        - "ALTER TABLE {{ this }} ENABLE ROW LEVEL SECURITY"
+        - "CREATE POLICY tenant_isolation ON {{ this }} FOR SELECT USING (tenant_id = current_setting('app.current_tenant', true)::uuid)"

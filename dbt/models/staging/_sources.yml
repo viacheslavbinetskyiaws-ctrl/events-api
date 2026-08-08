@@ -9,6 +9,7 @@ sources:
         description: Raw events as ingested by POST /events.
         columns:
           - name: id
+          - name: tenant_id
           - name: event_type
           - name: user_id
           - name: occurred_at

@@ -10,6 +10,11 @@ models:
           - unique
           - not_null
 
+      - name: tenant_id
+        description: "Which tenant this event belongs to, resolved from the X-Tenant-ID request header at ingestion time. Not unique per row (many events share a tenant) - only presence is enforced here; isolation itself is enforced by the app layer and Postgres RLS on the source table, not by dbt."
+        data_tests:
+          - not_null
+
       - name: event_type
         description: "The kind of event being tracked (e.g. 'signup', 'page_view') - a free-form string set by the client, not constrained to a fixed vocabulary yet."
         data_tests:

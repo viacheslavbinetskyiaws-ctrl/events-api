@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,23 +21,16 @@ class PostgresEventRepository(EventRepository):
     awkward, that's worth flagging: it may mean the abstraction needs to
     declare async signatures.
 
-    Your turn to implement `add` and `list`:
+    add(event) needed no change for Milestone 7 — event.tenant_id is
+    already set by EventService before this is called, and model_dump()
+    picks it up like any other field.
 
-    add(event):
-      - Build an EventORM from the Event domain object (they have the same
-        fields — this is the ORM-row <-> domain-object translation this
-        class exists to own).
-      - `session.add(...)`, then `await session.commit()`.
-      - Return the Event that was passed in (or re-derive it from the ORM
-        row — either is defensible; know which you picked and why).
-
-    list(limit, offset):
-      - `select(EventORM)` ordered by `occurred_at` descending (most-recent
-        first — same contract as InMemoryEventRepository), with
-        `.limit(limit).offset(offset)`.
-      - `await session.execute(...)`, then map each EventORM row back to
-        an `Event` domain object. Don't return ORM instances directly —
-        that would leak a SQLAlchemy type across the repository boundary.
+    list(tenant_id, limit, offset) is your turn to update: add
+    `.where(EventORM.tenant_id == tenant_id)` to the existing select(),
+    ideally combined with the `.order_by(...)` chain rather than as a
+    separate statement. This is the app-layer half of tenant isolation —
+    RLS enforces the same boundary independently at the DB, but this app-
+    layer filter still has to be right (defense in depth, not either/or).
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -47,8 +42,14 @@ class PostgresEventRepository(EventRepository):
 
         return event
 
-    async def list(self, limit: int = 50, offset: int = 0) -> list[Event]:
-        stmt = select(EventORM).order_by(EventORM.occurred_at.desc()).limit(limit).offset(offset)
+    async def list(self, tenant_id: UUID, limit: int = 50, offset: int = 0) -> list[Event]:
+        stmt = (
+            select(EventORM)
+            .where(EventORM.tenant_id == tenant_id)
+            .order_by(EventORM.occurred_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
 
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
