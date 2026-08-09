@@ -17,21 +17,28 @@ test_get_daily_counts_delegates_to_repository:
 """
 
 from datetime import date
+from uuid import uuid4
 
 from app.domain.schemas import DailyEventCount
 from app.services.analytics import AnalyticsService
+
+TENANT_ID = uuid4()
 
 
 async def test_get_daily_counts_delegates_to_repository(mock_analytics_repository):
     service = AnalyticsService(mock_analytics_repository)
 
     expected = mock_analytics_repository.get_daily_counts.return_value = [
-        DailyEventCount(event_type="signup", utc_date=date(2026, 11, 11), event_count=2),
-        DailyEventCount(event_type="logout", utc_date=date(2026, 11, 12), event_count=3),
+        DailyEventCount(
+            tenant_id=TENANT_ID, event_type="signup", utc_date=date(2026, 11, 11), event_count=2
+        ),
+        DailyEventCount(
+            tenant_id=TENANT_ID, event_type="logout", utc_date=date(2026, 11, 12), event_count=3
+        ),
     ]
 
-    result = await service.get_daily_counts()
+    result = await service.get_daily_counts(TENANT_ID)
 
-    mock_analytics_repository.get_daily_counts.assert_awaited_once()
+    mock_analytics_repository.get_daily_counts.assert_awaited_once_with(TENANT_ID)
 
     assert result == expected

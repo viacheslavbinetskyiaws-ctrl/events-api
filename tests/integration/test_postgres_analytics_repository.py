@@ -31,6 +31,7 @@ test_get_daily_counts_orders_most_recent_first:
 """
 
 from datetime import date
+from uuid import uuid4
 
 import pytest
 
@@ -40,25 +41,37 @@ from app.repositories.models import DailyEventCountORM
 
 pytestmark = pytest.mark.integration
 
+TENANT_ID = uuid4()
+
 
 async def test_get_daily_counts_round_trips(db_session):
-    event_first = DailyEventCount(event_type="signup", utc_date=date(2026, 11, 11), event_count=2)
-    event_second = DailyEventCount(event_type="logout", utc_date=date(2026, 11, 12), event_count=3)
+    event_first = DailyEventCount(
+        tenant_id=TENANT_ID, event_type="signup", utc_date=date(2026, 11, 11), event_count=2
+    )
+    event_second = DailyEventCount(
+        tenant_id=TENANT_ID, event_type="logout", utc_date=date(2026, 11, 12), event_count=3
+    )
     db_session.add(DailyEventCountORM(**event_first.model_dump()))
     db_session.add(DailyEventCountORM(**event_second.model_dump()))
     await db_session.commit()
 
     repo = PostgresAnalyticsRepository(db_session)
-    result = await repo.get_daily_counts()
+    result = await repo.get_daily_counts(TENANT_ID)
 
     assert event_first == result[1]
     assert event_second == result[0]
 
 
 async def test_get_daily_counts_orders_most_recent_first(db_session):
-    event_first = DailyEventCount(event_type="signup", utc_date=date(2026, 11, 11), event_count=2)
-    event_second = DailyEventCount(event_type="logout", utc_date=date(2026, 11, 12), event_count=3)
-    event_third = DailyEventCount(event_type="signup", utc_date=date(2026, 11, 10), event_count=2)
+    event_first = DailyEventCount(
+        tenant_id=TENANT_ID, event_type="signup", utc_date=date(2026, 11, 11), event_count=2
+    )
+    event_second = DailyEventCount(
+        tenant_id=TENANT_ID, event_type="logout", utc_date=date(2026, 11, 12), event_count=3
+    )
+    event_third = DailyEventCount(
+        tenant_id=TENANT_ID, event_type="signup", utc_date=date(2026, 11, 10), event_count=2
+    )
     db_session.add(DailyEventCountORM(**event_first.model_dump()))
     db_session.add(DailyEventCountORM(**event_second.model_dump()))
     db_session.add(DailyEventCountORM(**event_third.model_dump()))
@@ -66,6 +79,6 @@ async def test_get_daily_counts_orders_most_recent_first(db_session):
     await db_session.commit()
 
     repo = PostgresAnalyticsRepository(db_session)
-    result = await repo.get_daily_counts()
+    result = await repo.get_daily_counts(TENANT_ID)
 
     assert event_second == result[0]

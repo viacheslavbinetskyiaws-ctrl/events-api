@@ -34,3 +34,32 @@ class DailyEventCount(BaseModel):
     event_type: str
     utc_date: date
     event_count: int
+
+
+class TenantAccountCreate(BaseModel):
+    """Input shape for POST /admin/tenants. No `id`/timestamps — assigned
+    by the service, same convention as EventCreate."""
+
+    name: str
+    plan_tier: str
+
+
+class TenantAccountUpdate(BaseModel):
+    """Input shape for PATCH /admin/tenants/{tenant_id} — partial update.
+    Both fields optional; None means "leave unchanged", not "clear the
+    field" (neither column is nullable, so there's no other sensible
+    meaning for None here)."""
+
+    name: str | None = None
+    plan_tier: str | None = None
+
+
+class TenantAccount(BaseModel):
+    """The domain entity — this is the write path Milestone 8's CDC
+    connector captures."""
+
+    id: UUID
+    name: str
+    plan_tier: str
+    created_at: datetime
+    updated_at: datetime

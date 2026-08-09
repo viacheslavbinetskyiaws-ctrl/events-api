@@ -2,10 +2,10 @@ import fastapi_swagger_dark as fsd
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api.routers import analytics, events, health
+from app.api.routers import admin, analytics, events, health
 from app.core.config import get_settings
 from app.core.logging import configure_logging
-from app.domain.exceptions import DomainError, EventNotFoundError
+from app.domain.exceptions import DomainError, EventNotFoundError, TenantAccountNotFoundError
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -21,6 +21,7 @@ app.include_router(docs_router)
 app.include_router(health.router)
 app.include_router(events.router)
 app.include_router(analytics.router)
+app.include_router(admin.router)
 
 
 @app.exception_handler(EventNotFoundError)
@@ -28,6 +29,16 @@ def handle_event_not_found(request: Request, exc: EventNotFoundError) -> JSONRes
     return JSONResponse(
         status_code=404,
         content={"error": {"code": "event_not_found", "message": str(exc)}},
+    )
+
+
+@app.exception_handler(TenantAccountNotFoundError)
+def handle_tenant_account_not_found(
+    request: Request, exc: TenantAccountNotFoundError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=404,
+        content={"error": {"code": "tenant_account_not_found", "message": str(exc)}},
     )
 
 

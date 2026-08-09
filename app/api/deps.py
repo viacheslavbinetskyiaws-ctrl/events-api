@@ -16,8 +16,13 @@ from app.core.db import get_db_session
 from app.repositories.analytics import AnalyticsRepository, PostgresAnalyticsRepository
 from app.repositories.base import EventRepository
 from app.repositories.postgres import PostgresEventRepository
+from app.repositories.tenant_accounts import (
+    PostgresTenantAccountRepository,
+    TenantAccountRepository,
+)
 from app.services.analytics import AnalyticsService
 from app.services.events import EventService
+from app.services.tenant_accounts import TenantAccountService
 
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
@@ -92,3 +97,22 @@ def get_analytics_service(repository: AnalyticsRepositoryDep) -> AnalyticsServic
 
 
 AnalyticsServiceDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
+
+
+# Plain SessionDep, not TenantScopedSessionDep — tenant_accounts isn't a
+# tenant-scoped resource (see TenantAccountRepository's docstring), so
+# there's no app.current_tenant to set here.
+def get_tenant_account_repository(session: SessionDep) -> TenantAccountRepository:
+    return PostgresTenantAccountRepository(session)
+
+
+TenantAccountRepositoryDep = Annotated[
+    TenantAccountRepository, Depends(get_tenant_account_repository)
+]
+
+
+def get_tenant_account_service(repository: TenantAccountRepositoryDep) -> TenantAccountService:
+    return TenantAccountService(repository)
+
+
+TenantAccountServiceDep = Annotated[TenantAccountService, Depends(get_tenant_account_service)]

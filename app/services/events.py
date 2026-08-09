@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from app.domain.exceptions import DomainError
 from app.domain.schemas import Event, EventCreate
@@ -20,6 +20,13 @@ class EventService:
     same shape as the event_type/pagination checks already below. No
     parsing needed; by the time this runs, a non-None value is already a
     real UUID.
+
+    ingest() resolves occurred_at's "default to now if not supplied"
+    fallback here, not in the repository — that's a business rule, not
+    database housekeeping, unlike id (see EventORM's docstring for that
+    distinction). id itself is no longer assigned here at all:
+    EventRepository.add takes an EventCreate + tenant_id and returns the
+    full Event, DB-assigned id included.
     """
 
     def __init__(self, repository: EventRepository) -> None:
@@ -31,15 +38,11 @@ class EventService:
         if x_tenant_id is None:
             raise DomainError("X-Tenant-ID header is required")
 
-        event_out = Event(
-            id=uuid4(),
-            occurred_at=event_in.occurred_at or datetime.now(UTC),
-            tenant_id=x_tenant_id,
-            **event_in.model_dump(exclude={"occurred_at"}),
+        resolved_event_in = event_in.model_copy(
+            update={"occurred_at": event_in.occurred_at or datetime.now(UTC)}
         )
-        await self._repository.add(event_out)
 
-        return event_out
+        return await self._repository.add(x_tenant_id, resolved_event_in)
 
     async def list_events(
         self, x_tenant_id: UUID | None, limit: int = 50, offset: int = 0

@@ -12,3 +12,9 @@ class EventNotFoundError(DomainError):
     def __init__(self, event_id: UUID) -> None:
         self.event_id = event_id
         super().__init__(f"Event {event_id} not found")
+
+
+class TenantAccountNotFoundError(DomainError):
+    def __init__(self, tenant_id: UUID) -> None:
+        self.tenant_id = tenant_id
+        super().__init__(f"Tenant account {tenant_id} not found")

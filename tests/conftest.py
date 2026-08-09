@@ -16,6 +16,7 @@ from app.repositories import (
 )
 from app.repositories.analytics import AnalyticsRepository
 from app.repositories.base import EventRepository
+from app.repositories.tenant_accounts import TenantAccountRepository
 
 # A separate database from the one local dev/manual testing uses (see
 # docker/init-test-db.sql) — so running the test suite can never collide
@@ -46,6 +47,14 @@ def mock_analytics_repository() -> AsyncMock:
     Use this for AnalyticsService unit tests.
     """
     return AsyncMock(spec=AnalyticsRepository)
+
+
+@pytest.fixture
+def mock_tenant_account_repository() -> AsyncMock:
+    """Same idea as mock_repository, but spec'd to TenantAccountRepository.
+    Use this for TenantAccountService unit tests.
+    """
+    return AsyncMock(spec=TenantAccountRepository)
 
 
 @pytest.fixture(scope="session")
@@ -80,20 +89,36 @@ async def _test_dbt_tables_created() -> None:
 
 @pytest_asyncio.fixture
 async def db_session(
-    _test_db_migrated: None, _test_dbt_tables_created: None
+    _test_dbt_tables_created: None, _test_db_migrated: None
 ) -> AsyncGenerator[AsyncSession]:
     """A real session against events_test — a separate database from the
     one local dev/manual testing uses, so the two can never collide (see
-    TEST_DATABASE_URL above). Truncates `events` and `daily_event_counts`
-    both before and after each test — before, so a test never starts
-    against a dirty table (a crashed prior run, for instance); after, so
-    nothing is left behind for the next run. Requires
+    TEST_DATABASE_URL above). Truncates `events`, `daily_event_counts`,
+    and `tenant_accounts` both before and after each test — before, so a
+    test never starts against a dirty table (a crashed prior run, for
+    instance); after, so nothing is left behind for the next run. Requires
     `docker compose up -d postgres` — schema setup for both tables is
     applied automatically via the two fixtures above.
+
+    _test_dbt_tables_created must run before _test_db_migrated, not just
+    listed before it for style — migration d7a67740cfa5 does
+    `GRANT SELECT ON daily_event_counts TO events_app`, which fails with
+    UndefinedTableError against a fresh events_test if daily_event_counts
+    doesn't exist yet. Same bootstrapping-order dependency the dev
+    database hit by hand (interleaving `alembic upgrade` with `dbt run`)
+    — here it's resolved by fixture ordering instead, since
+    _test_dbt_tables_created creates the table directly via
+    DBTBase.metadata rather than needing a real dbt run.
+
+    Connects as the `events` owner role (see TEST_DATABASE_URL), not
+    `events_app`, so TRUNCATE works regardless of tenant_accounts' more
+    limited app-role grants (SELECT/INSERT/UPDATE only — see the grant
+    migration).
     """
     async with test_session_factory() as session:
         await session.execute(text("TRUNCATE TABLE events"))
         await session.execute(text("TRUNCATE TABLE daily_event_counts"))
+        await session.execute(text("TRUNCATE TABLE tenant_accounts"))
         await session.commit()
 
         yield session
@@ -101,4 +126,5 @@ async def db_session(
         await session.rollback()
         await session.execute(text("TRUNCATE TABLE events"))
         await session.execute(text("TRUNCATE TABLE daily_event_counts"))
+        await session.execute(text("TRUNCATE TABLE tenant_accounts"))
         await session.commit()
