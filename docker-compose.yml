@@ -5,6 +5,14 @@ services:
       POSTGRES_USER: events
       POSTGRES_PASSWORD: events
       POSTGRES_DB: events
+    # wal_level=logical is what Debezium's CDC connector needs (Postgres
+    # logical replication) — Milestone 8. It's a postmaster-context setting
+    # (can't be reloaded, only set at server start), so changing this
+    # requires the container to actually restart, not just `docker compose
+    # up -d` reapplying config to an already-running one. max_replication_slots
+    # / max_wal_senders default to 10 each in Postgres 17 — already enough
+    # for one Debezium connector, no need to raise them.
+    command: ["postgres", "-c", "wal_level=logical"]
     ports:
       - "5432:5432"
     volumes:
@@ -16,5 +24,91 @@ services:
       timeout: 3s
       retries: 10
 
+  kafka:
+    image: apache/kafka:4.0.0
+    # Real Apache Kafka, not Redpanda — the target job posting names Kafka
+    # specifically, so this is meant to build real hands-on familiarity
+    # (topics, consumer groups, the actual broker/CLI tooling), not just
+    # wire-protocol-compatible behavior.
+    #
+    # KRaft mode: Kafka manages its own metadata via a Raft quorum built
+    # into the broker process itself — no separate Zookeeper service,
+    # which Kafka dropped entirely as of 4.0. A single container plays
+    # both roles here (`KAFKA_PROCESS_ROLES=broker,controller`), which is
+    # only valid for single-node dev setups like this one; a real
+    # multi-broker cluster splits controller and broker roles apart.
+    #
+    # CLUSTER_ID is a fixed, pre-generated UUID (base64, no padding) —
+    # KRaft writes it into the on-disk metadata log at first startup and
+    # every subsequent broker restart must present the same one, so it's
+    # hardcoded here rather than generated fresh each `docker compose up`.
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    # 9092 is the internal, container-to-container address (what
+    # kafka-connect below and anything else in this compose network use).
+    # 29092 is the host-facing one, for CLI tools/scripts run from your
+    # machine directly against localhost — Kafka needs two distinct
+    # advertised listeners here because "kafka:9092" doesn't resolve
+    # outside Docker's network, and "localhost:9092" wouldn't resolve
+    # correctly *inside* it either.
+    ports:
+      - "29092:29092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+
+  kafka-connect:
+    image: debezium/connect:3.0.0.Final
+    # Kafka Connect: a generic framework for streaming data in/out of
+    # Kafka via pluggable "connectors" — it isn't Debezium-specific, but
+    # this image bundles Kafka Connect together with Debezium's connector
+    # plugins pre-installed. Debezium's Postgres connector is a *source*
+    # connector: it reads Postgres's write-ahead log (via the
+    # wal_level=logical replication slot set up on the postgres service
+    # above) and publishes each row-level change as a Kafka message —
+    # one topic per captured table.
+    #
+    # This container alone doesn't capture anything yet: Kafka Connect
+    # exposes a REST API (8083) that connectors get registered against
+    # after the stack is up — the actual Postgres connector config (which
+    # table to watch, replication slot name, etc.) gets POSTed there as a
+    # separate step, not declared here.
+    #
+    # CONFIG/OFFSET/STATUS_STORAGE_TOPIC are Kafka Connect's own
+    # bookkeeping topics (its registered connector configs, per-connector
+    # read offsets, and task status) — it creates these in Kafka itself
+    # on first startup, not a separate datastore.
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    ports:
+      - "8083:8083"
+
 volumes:
   postgres_data:
+  kafka_data:

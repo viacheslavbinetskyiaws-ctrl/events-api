@@ -23,6 +23,18 @@ dbt = [
     "dbt-postgres>=1.11.0",
 ]
 
+# Same reasoning as the dbt extra above: the CDC consumer (streaming/) is
+# its own standalone process, never imported by the API server, so its
+# dependency doesn't belong in the base API image. confluent-kafka (the
+# librdkafka-based official client) over kafka-python/aiokafka: it's the
+# industry-standard Python Kafka client most production teams actually
+# use, and this consumer is a dedicated poll-loop process rather than
+# something living inside FastAPI's async request cycle, so there's no
+# async-ecosystem-fit reason to prefer aiokafka here.
+streaming = [
+    "confluent-kafka>=2.6.1",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
