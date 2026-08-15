@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException
+from pydantic import ValidationError
 from sqlalchemy import select
 
-from app.api.deps import SessionDep
+from app.api.deps import DataQualityServiceDep, SessionDep
+from app.domain.schemas import DataQualityReport
 
 router = APIRouter(tags=["health"])
 
@@ -26,3 +28,16 @@ async def readiness(session: SessionDep) -> dict[str, str]:
         raise HTTPException(503, "DB is not responding") from err
 
     return {"status": "ok"}
+
+
+@router.get("/health/data-quality", response_model=DataQualityReport)
+def data_quality(service: DataQualityServiceDep) -> DataQualityReport:
+    try:
+        report = service.get_latest_report()
+    except (FileNotFoundError, ValidationError) as err:
+        raise HTTPException(503, "dbt run results unavailable or invalid") from err
+
+    if not report.passed:
+        raise HTTPException(503, detail=report)
+
+    return report

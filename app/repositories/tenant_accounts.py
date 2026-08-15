@@ -47,12 +47,14 @@ class PostgresTenantAccountRepository(TenantAccountRepository):
 
     create(tenant_account_in) needs no id/created_at/updated_at built
     client-side: server_default handles all three on INSERT (id via
-    gen_random_uuid(), timestamps via now()). The refresh() after commit()
-    is technically redundant here — SQLAlchemy's eager_defaults ("auto",
-    the 2.0 default) fetches server_default values via RETURNING as part
-    of the INSERT itself — but it's kept for symmetry with update() below,
-    where the equivalent auto-fetch does NOT happen and refresh() is load-
-    bearing, not just explicit.
+    gen_random_uuid(), timestamps via now()), and SQLAlchemy's
+    eager_defaults ("auto", the 2.0 default) fetches them back via
+    RETURNING as part of the INSERT itself — no refresh() needed. This
+    used to have one anyway "for symmetry" with update() below, until
+    PostgresEventRepository.add() turned out to have an equivalent
+    refresh() that was actively broken under RLS (see its docstring),
+    not just redundant — removed here too rather than leave a pattern
+    around that looks safe to copy elsewhere but isn't.
 
     update(tenant_id, updates)'s refresh() before returning is required,
     not optional: confirmed empirically against a real Postgres instance
@@ -71,7 +73,6 @@ class PostgresTenantAccountRepository(TenantAccountRepository):
         row = TenantAccountORM(**tenant_account_in.model_dump())
         self._session.add(row)
         await self._session.commit()
-        await self._session.refresh(row)
 
         return TenantAccount.model_validate(row, from_attributes=True)
 

@@ -12,6 +12,7 @@ from fastapi import Depends, Header
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.core.db import get_db_session
 from app.repositories.analytics import AnalyticsRepository, PostgresAnalyticsRepository
 from app.repositories.base import EventRepository
@@ -21,6 +22,7 @@ from app.repositories.tenant_accounts import (
     TenantAccountRepository,
 )
 from app.services.analytics import AnalyticsService
+from app.services.data_quality import DataQualityService
 from app.services.events import EventService
 from app.services.tenant_accounts import TenantAccountService
 
@@ -116,3 +118,12 @@ def get_tenant_account_service(repository: TenantAccountRepositoryDep) -> Tenant
 
 
 TenantAccountServiceDep = Annotated[TenantAccountService, Depends(get_tenant_account_service)]
+
+SettingsDep = Annotated[Settings, Depends(get_settings)]
+
+
+def get_data_quality_service(settings: SettingsDep) -> DataQualityService:
+    return DataQualityService(settings)
+
+
+DataQualityServiceDep = Annotated[DataQualityService, Depends(get_data_quality_service)]

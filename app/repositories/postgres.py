@@ -24,11 +24,18 @@ class PostgresEventRepository(EventRepository):
     declare async signatures.
 
     add(tenant_id, event_in) builds the row without id — server_default
-    handles it on INSERT. refresh() is technically redundant on the
-    INSERT path (SQLAlchemy's eager_defaults "auto" fetches server_default
-    values via RETURNING as part of the INSERT itself, confirmed for
-    TenantAccountORM.id/created_at/updated_at), but kept for the same
-    explicitness reason as PostgresTenantAccountRepository.create.
+    handles it on INSERT, and SQLAlchemy's eager_defaults "auto" fetches
+    it (and ingested_at) back via RETURNING as part of the INSERT itself,
+    so no refresh() call is needed. It used to have one, "for
+    explicitness" — turned out to be actively broken, not just redundant:
+    commit() ends the transaction get_tenant_scoped_session set
+    app.current_tenant in, and a custom Postgres GUC that's been SET
+    LOCAL at least once in a session reverts to '' (not NULL) once that
+    transaction ends, not "unset" — so a refresh() afterward hit the
+    tenant_isolation policy's `current_setting(...)::uuid` cast on '' and
+    raised InvalidTextRepresentationError. Confirmed live via psql
+    (BEGIN; set_config(..., true); COMMIT; BEGIN; current_setting(...) —
+    returns '', IS NULL is false).
 
     list(tenant_id, limit, offset) filters with
     `.where(EventORM.tenant_id == tenant_id)`, combined with the
@@ -45,7 +52,6 @@ class PostgresEventRepository(EventRepository):
         row = EventORM(tenant_id=tenant_id, **event_in.model_dump())
         self._session.add(row)
         await self._session.commit()
-        await self._session.refresh(row)
 
         return Event.model_validate(row, from_attributes=True)
 

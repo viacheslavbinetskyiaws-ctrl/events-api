@@ -8,7 +8,7 @@
 -- relying on whatever the source happens to be today, so a source schema
 -- drift breaks loudly here instead of silently downstream.
 --
--- Columns: id, tenant_id, event_type, user_id, occurred_at, properties.
+-- Columns: id, tenant_id, event_type, user_id, occurred_at, ingested_at, properties.
 -- Nothing needs to unpack `properties` yet, so pass the JSONB through as-is
 -- rather than extracting fields nobody's asked for (YAGNI applies to
 -- transformations too, not just application code).
@@ -23,5 +23,6 @@ select
     event_type::varchar as event_type,
     user_id::varchar as user_id,
     occurred_at::timestamptz as occurred_at,
+    ingested_at::timestamptz as ingested_at,
     properties::jsonb as properties
 from {{ source('app', 'events') }}

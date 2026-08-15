@@ -63,3 +63,15 @@ class TenantAccount(BaseModel):
     plan_tier: str
     created_at: datetime
     updated_at: datetime
+
+
+class DataQualityCheck(BaseModel):
+    unique_id: str
+    status: str
+    message: str | None = None
+
+
+class DataQualityReport(BaseModel):
+    generated_at: datetime
+    passed: bool
+    checks: list[DataQualityCheck]

@@ -40,6 +40,9 @@ class EventORM(Base):
     event_type: Mapped[str] = mapped_column(index=True)
     user_id: Mapped[str] = mapped_column(index=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     properties: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 

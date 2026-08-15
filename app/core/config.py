@@ -1,4 +1,4 @@
-from functools import lru_cache
+from functools import cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -22,10 +22,11 @@ class Settings(BaseSettings):
     environment: str = "local"
     log_level: str = "INFO"
     database_url: str = "postgresql+asyncpg://events_app:events_app@localhost:5432/events"
+    dbt_run_results_path: str = "../dbt/target/run_results.json"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="APP_")
 
 
-@lru_cache
+@cache
 def get_settings() -> Settings:
     return Settings()
