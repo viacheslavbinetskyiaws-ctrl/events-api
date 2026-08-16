@@ -127,6 +127,8 @@ New — not in the original scope. Added after comparing the project against a r
 | Event streaming (Kafka/Redpanda), decoupled consumers | 8 |
 | Data quality testing, freshness checks, alerting | 9 |
 
+Milestones 10+ (job-posting gap-filling: CDC correctness/replayability, dbt at scale, BigQuery, MongoDB) live in `FUTURE_PLAN.md`, not here — see that file's own concepts table.
+
 ## Verification
 
 - Milestone 1–2: `pytest` green locally; manual `curl` against `uvicorn` dev server for all 3 endpoints
@@ -137,6 +139,8 @@ New — not in the original scope. Added after comparing the project against a r
 - Milestone 8: `docker compose up` brings up Debezium + Kafka/Redpanda alongside Postgres with `wal_level=logical` confirmed via `SHOW wal_level;`; inserting/updating a row in `tenant_accounts` produces a visible change event in the consumer's output within a few seconds
 - Milestone 9: a deliberately-failing dbt test is visibly surfaced (script/endpoint output, or a webhook fires) without manually reading dbt logs; the freshness check correctly flags a table as stale when writes are paused
 
+Milestones 10+ verification criteria live in `FUTURE_PLAN.md`.
+
 ## Explicitly deferred to a future, separate plan
 
-Real EKS deployment, ECR/RDS/EKS Terraform modules, Ingress, HPA, a full observability stack (Prometheus/Grafana), CI/CD, IRSA, ALB ingress controller.
+Real EKS deployment, ECR/RDS/EKS Terraform modules, Ingress, HPA, a full observability stack (Prometheus/Grafana), CI/CD, IRSA, ALB ingress controller. Job-posting gap-filling (CDC correctness/replayability, dbt at scale, BigQuery, MongoDB, and what was explicitly checked-and-skipped) is its own document — see `FUTURE_PLAN.md`.
