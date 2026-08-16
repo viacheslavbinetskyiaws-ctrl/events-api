@@ -21,10 +21,10 @@ TENANT_ID = uuid4()
 async def test_create_delegates_to_repository(mock_tenant_account_repository):
     service = TenantAccountService(mock_tenant_account_repository)
 
-    tenant_account_in = TenantAccountCreate(name="Acme", plan_tier="free")
+    tenant_account_in = TenantAccountCreate(name="acme", plan_tier="free")
     expected = mock_tenant_account_repository.create.return_value = TenantAccount(
         id=TENANT_ID,
-        name="Acme",
+        name="acme",
         plan_tier="free",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
@@ -53,7 +53,7 @@ async def test_update_delegates_to_repository(mock_tenant_account_repository):
     updates = TenantAccountUpdate(plan_tier="enterprise")
     expected = mock_tenant_account_repository.update.return_value = TenantAccount(
         id=TENANT_ID,
-        name="Acme",
+        name="acme",
         plan_tier="enterprise",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),

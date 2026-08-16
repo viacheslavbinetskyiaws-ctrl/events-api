@@ -25,9 +25,9 @@ pytestmark = pytest.mark.integration
 async def test_create_returns_db_generated_id_and_timestamps(db_session):
     repo = PostgresTenantAccountRepository(db_session)
 
-    result = await repo.create(TenantAccountCreate(name="Acme", plan_tier="free"))
+    result = await repo.create(TenantAccountCreate(name="acme", plan_tier="free"))
 
-    assert result.name == "Acme"
+    assert result.name == "acme"
     assert result.plan_tier == "free"
     assert result.id is not None
     assert result.created_at is not None
@@ -37,12 +37,12 @@ async def test_create_returns_db_generated_id_and_timestamps(db_session):
 async def test_update_changes_only_supplied_fields(db_session):
     repo = PostgresTenantAccountRepository(db_session)
 
-    created = await repo.create(TenantAccountCreate(name="Acme", plan_tier="free"))
+    created = await repo.create(TenantAccountCreate(name="acme", plan_tier="free"))
 
     updated = await repo.update(created.id, TenantAccountUpdate(plan_tier="enterprise"))
 
     assert updated.id == created.id
-    assert updated.name == "Acme"
+    assert updated.name == "acme"
     assert updated.plan_tier == "enterprise"
     assert updated.created_at == created.created_at
     assert updated.updated_at > created.updated_at
