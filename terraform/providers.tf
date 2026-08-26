@@ -1,13 +1,12 @@
-
 provider "aws" {
-  region                      = "us-east-1"
-  access_key                  = "test"
-  secret_key                  = "test"
-  skip_credentials_validation = true
-  skip_metadata_api_check     = true
-  skip_region_validation      = true
-  skip_requesting_account_id  = true
-  s3_use_path_style           = true
+  region                      = "eu-central-1"
+  access_key                  = var.use_locastack ? "test" : null
+  secret_key                  = var.use_locastack ? "test" : null
+  skip_credentials_validation = var.use_locastack
+  skip_metadata_api_check     = var.use_locastack
+  skip_region_validation      = var.use_locastack
+  skip_requesting_account_id  = var.use_locastack
+  s3_use_path_style           = var.use_locastack
 
   dynamic "endpoints" {
     for_each = var.use_locastack ? [1] : []

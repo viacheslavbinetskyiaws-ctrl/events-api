@@ -66,7 +66,11 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092",
+        ]
       interval: 3s
       timeout: 5s
       retries: 15
@@ -109,6 +113,24 @@ services:
     ports:
       - "8083:8083"
 
+  mongodb:
+    image: mongo:7
+    # Milestone 13: the one-directional projection target for
+    # events.properties (see streaming/consumer.py). No auth configured —
+    # matches the rest of this compose file's local-dev-only posture
+    # (Postgres/Kafka Connect have none either), not something to carry
+    # into a real deployment.
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+
 volumes:
   postgres_data:
   kafka_data:
+  mongo_data:

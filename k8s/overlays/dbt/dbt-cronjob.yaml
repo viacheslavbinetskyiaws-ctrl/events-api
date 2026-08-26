@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dbt-build
+  namespace: events-api
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: dbt-build
+              image: events-api-dbt:local
+              imagePullPolicy: Never
+              command: ["sh", "scripts/run_and_publish.sh"]
+              env:
+                - name: DBT_HOST
+                  value: postgres
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi

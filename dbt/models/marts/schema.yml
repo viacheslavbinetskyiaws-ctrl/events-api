@@ -12,10 +12,18 @@ models:
     columns:
       - name: tenant_id
         description: "Which tenant this daily count belongs to. Part of the grain (tenant_id, event_type, utc_date) as of Milestone 7 - was (event_type, utc_date) before multi-tenancy."
+        data_type: uuid
         data_tests:
           - not_null
 
+      - name: event_type
+        data_type: varchar
+
+      - name: utc_date
+        data_type: date
+
       - name: event_count
+        data_type: bigint
         data_tests:
           - dbt_utils.expression_is_true:
               arguments:

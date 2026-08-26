@@ -38,3 +38,8 @@ models:
         - "DROP POLICY IF EXISTS tenant_isolation ON {{ this }}"
         - "ALTER TABLE {{ this }} ENABLE ROW LEVEL SECURITY"
         - "CREATE POLICY tenant_isolation ON {{ this }} FOR SELECT USING (tenant_id = current_setting('app.current_tenant', true)::uuid)"
+    intermediate:
+      +materialized: view
+    bigquery:
+      +materialized: table
+      +enabled: "{{ target.name == 'bigquery' }}"

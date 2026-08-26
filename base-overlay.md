@@ -1,0 +1,10 @@
+Base = the minimum, self-contained set of manifests that can be applied on its own and gets you a working thing. In this repo, k8s/base/ is namespace + Postgres + the app + the migration Job — kubectl apply -k k8s/base alone brings up a fully working API, nothing more, nothing missing.
+
+Overlay = a separate directory whose kustomization.yaml points back at a base (or another overlay) via resources: - ../../base, then adds more on top. Kustomize resolves that reference recursively, merges everything into one flat list, and applies it all together. An overlay isn't a variant copy of base — it's base plus deltas, so base is written exactly once.
+
+In this repo the overlays add genuinely new resources rather than patch existing ones (Kustomize also supports patching — e.g. bumping replica counts or swapping an image tag for a "prod" overlay — but that's not what's happening here):
+- k8s/overlays/cdc/ → adds Kafka, Kafka Connect, MongoDB, the Python consumer
+- k8s/overlays/dbt/ → adds the dbt CronJob
+- k8s/overlays/realtime/ → adds the Node SSE relay, and points at ../cdc (not ../../base) specifically because it needs Kafka, chaining base → cdc → realtime into one apply
+
+Why you need this instead of one giant manifest set: optionality without duplication. If you're just working on the FastAPI app, you don't want Kafka/Mongo/the Node relay spinning up too — three extra StatefulSets/Deployments eating cluster resources for something you're not touching. Copy-pasting base's manifests into three separate "full," "with-CDC," "with-everything" folders would work too, but every future change to base (a new env var, a probe tweak) would need to be repeated in every copy, and they'd drift. Kustomize's base/overlay split means base changes once and every overlay that references it picks the change up automatically — you only maintain the deltas that are actually specific to each optional piece.

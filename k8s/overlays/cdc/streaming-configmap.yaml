@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: streaming-config
+  namespace: events-api
+data:
+  STREAMING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  STREAMING_MONGO_URI: "mongodb://mongodb:27017"

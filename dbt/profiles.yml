@@ -18,3 +18,11 @@ events_analytics:
       dbname: "{{ env_var('DBT_DBNAME', 'events') }}"
       schema: public
       threads: 4
+    bigquery:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('DBT_BIGQUERY_PROJECT', 'project-e8569bd6-524d-42fe-bb9') }}"
+      dataset: "{{ env_var('DBT_BIGQUERY_DATASET', 'events_analytics') }}"
+      impersonate_service_account: "{{ env_var('DBT_BIGQUERY_SA', 'big-query@project-e8569bd6-524d-42fe-bb9.iam.gserviceaccount.com') }}"
+      location: US
+      threads: 4

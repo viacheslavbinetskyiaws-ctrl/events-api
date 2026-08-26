@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     database_url: str = "postgresql+asyncpg://events_app:events_app@localhost:5432/events"
     dbt_run_results_path: str = "../dbt/target/run_results.json"
+    dbt_sources_path: str = "../dbt/target/sources.json"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="APP_")
 

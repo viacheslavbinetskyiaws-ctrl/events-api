@@ -18,3 +18,5 @@ spec:
                 name: events-api-config
             - secretRef:
                 name: events-api-secrets
+            - secretRef:
+                name: events-api-migration-secrets

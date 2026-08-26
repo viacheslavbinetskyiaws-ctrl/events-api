@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-consumer
+  namespace: events-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cdc-consumer
+  template:
+    metadata:
+      labels:
+        app: cdc-consumer
+    spec:
+      containers:
+        - name: cdc-consumer
+          image: events-api-streaming:local
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: events-api-secrets
+            - configMapRef:
+                name: streaming-config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

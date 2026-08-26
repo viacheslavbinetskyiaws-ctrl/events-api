@@ -122,8 +122,8 @@ TenantAccountServiceDep = Annotated[TenantAccountService, Depends(get_tenant_acc
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-def get_data_quality_service(settings: SettingsDep) -> DataQualityService:
-    return DataQualityService(settings)
+def get_data_quality_service(session: SessionDep) -> DataQualityService:
+    return DataQualityService(session)
 
 
 DataQualityServiceDep = Annotated[DataQualityService, Depends(get_data_quality_service)]

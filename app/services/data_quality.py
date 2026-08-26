@@ -1,46 +1,24 @@
-from datetime import datetime
-from pathlib import Path
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from pydantic import BaseModel
-
-from app.core.config import Settings
 from app.domain.schemas import DataQualityCheck, DataQualityReport
-
-
-class _DbtRunResult(BaseModel):
-    unique_id: str
-    status: str
-    message: str | None
-
-
-class _DbtRunResultsMetadata(BaseModel):
-    generated_at: datetime
-
-
-class _DbtRunResultsFile(BaseModel):
-    metadata: _DbtRunResultsMetadata
-    results: list[_DbtRunResult]
+from app.repositories.models import DataQualityRunORM
 
 
 class DataQualityService:
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
-    def get_latest_report(self) -> DataQualityReport:
-        raw = Path(self._settings.dbt_run_results_path).read_text()
-        parsed = _DbtRunResultsFile.model_validate_json(raw)
+    async def get_latest_report(self) -> DataQualityReport | None:
+        stmt = select(DataQualityRunORM).where(DataQualityRunORM.id == 1)
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
 
-        checks = [
-            DataQualityCheck(
-                unique_id=result.unique_id,
-                status=result.status,
-                message=result.message,
-            )
-            for result in parsed.results
-        ]
+        if row is None:
+            return None
 
         return DataQualityReport(
-            generated_at=parsed.metadata.generated_at,
-            passed=all(check.status == "success" for check in checks),
-            checks=checks,
+            generated_at=row.generated_at,
+            passed=row.passed,
+            checks=[DataQualityCheck.model_validate(check) for check in row.checks],
         )

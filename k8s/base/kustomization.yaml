@@ -8,6 +8,7 @@ resources:
   - postgres-service.yaml
   - app-configmap.yaml
   - app-secret.yaml
+  - migration-secret.yaml
   - migration-job.yaml
   - deployment.yaml
   - service.yaml

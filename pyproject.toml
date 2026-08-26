@@ -18,10 +18,7 @@ dependencies = [
 # image doesn't bundle dbt's entire dependency tree for no reason. Local
 # dev installs it via `uv sync --extra dbt`.
 [project.optional-dependencies]
-dbt = [
-    "dbt-core>=1.12.0",
-    "dbt-postgres>=1.11.0",
-]
+dbt = ["dbt-core>=1.12.0", "dbt-postgres>=1.11.0"]
 
 # Same reasoning as the dbt extra above: the CDC consumer (streaming/) is
 # its own standalone process, never imported by the API server, so its
@@ -31,9 +28,16 @@ dbt = [
 # use, and this consumer is a dedicated poll-loop process rather than
 # something living inside FastAPI's async request cycle, so there's no
 # async-ecosystem-fit reason to prefer aiokafka here.
-streaming = [
-    "confluent-kafka>=2.6.1",
-]
+streaming = ["confluent-kafka>=2.6.1"]
+
+bigquery = ["dbt-bigquery>=1.12.0"]
+
+# pymongo's own async API (AsyncMongoClient), not Motor — Motor was
+# deprecated 2025-05-14 in favor of this, EOL 2026-05-14. Same
+# async-ecosystem-fit reasoning as before: consumer.py's poll loop already
+# runs on confluent-kafka's AIOConsumer/asyncio, so the async-native driver
+# fits that loop instead of blocking it.
+mongodb = ["pymongo>=4.15"]
 
 [dependency-groups]
 dev = [
@@ -68,11 +72,11 @@ extend-exclude = ["migrations/versions"]
 
 [tool.ruff.lint]
 select = [
-    "E",   # pycodestyle errors
-    "F",   # pyflakes (unused imports/names, undefined names)
-    "I",   # isort (import sorting/grouping)
-    "UP",  # pyupgrade (modern Python syntax)
-    "B",   # flake8-bugbear (common bug patterns)
+    "E",  # pycodestyle errors
+    "F",  # pyflakes (unused imports/names, undefined names)
+    "I",  # isort (import sorting/grouping)
+    "UP", # pyupgrade (modern Python syntax)
+    "B",  # flake8-bugbear (common bug patterns)
 ]
 
 [tool.ruff.lint.isort]

@@ -1,0 +1,21 @@
+{
+  "name": "events-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "events",
+    "database.password": "events",
+    "database.dbname": "events",
+    "topic.prefix": "cdc",
+    "table.include.list": "public.events",
+    "plugin.name": "pgoutput",
+    "slot.name": "debezium_events",
+    "publication.name": "dbz_events_publication",
+    "publication.autocreate.mode": "filtered",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false"
+  }
+}

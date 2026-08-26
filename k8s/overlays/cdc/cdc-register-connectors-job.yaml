@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cdc-register-connectors
+  namespace: events-api
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: create-publications
+          image: postgres:17
+          command:
+            [
+              "psql",
+              "-v",
+              "ON_ERROR_STOP=1",
+              "-f",
+              "/scripts/create-publications.sql",
+            ]
+          env:
+            - name: PGHOST
+              value: postgres
+            - name: PGUSER
+              value: events
+            - name: PGDATABASE
+              value: events
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: setup-scripts
+              mountPath: /scripts
+      containers:
+        - name: register-connectors
+          image: curlimages/curl:8.11.0
+          command: ["sh", "/scripts/register-connectors.sh"]
+          volumeMounts:
+            - name: setup-scripts
+              mountPath: /scripts
+      volumes:
+        - name: setup-scripts
+          configMap:
+            name: cdc-connector-setup
+            defaultMode: 0755

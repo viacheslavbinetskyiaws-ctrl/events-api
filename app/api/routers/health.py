@@ -31,13 +31,16 @@ async def readiness(session: SessionDep) -> dict[str, str]:
 
 
 @router.get("/health/data-quality", response_model=DataQualityReport)
-def data_quality(service: DataQualityServiceDep) -> DataQualityReport:
+async def data_quality(service: DataQualityServiceDep) -> DataQualityReport:
     try:
-        report = service.get_latest_report()
-    except (FileNotFoundError, ValidationError) as err:
+        report = await service.get_latest_report()
+    except ValidationError as err:
         raise HTTPException(503, "dbt run results unavailable or invalid") from err
 
+    if report is None:
+        raise HTTPException(503, "data quality report unavailable or invalid")
+
     if not report.passed:
-        raise HTTPException(503, detail=report)
+        raise HTTPException(503, detail=report.model_dump(mode="json"))
 
     return report

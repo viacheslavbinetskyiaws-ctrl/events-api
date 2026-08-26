@@ -8,6 +8,7 @@ __pycache__/
 # Env / secrets
 .env
 *.env.local
+dbt/bigquery-sa-key.json
 
 # dbt
 dbt/target/
@@ -22,6 +23,7 @@ terraform/**/.terraform/
 *.tfstate
 *.tfstate.backup
 *.tfplan
+*.tfvars
 
 # kubeconfig exports
 kubeconfig*.yaml
@@ -30,3 +32,5 @@ kubeconfig*.yaml
 .DS_Store
 .idea/
 .vscode/
+realtime/node_modules
+realtime/dist

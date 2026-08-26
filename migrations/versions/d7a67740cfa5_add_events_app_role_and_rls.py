@@ -43,7 +43,25 @@ def upgrade() -> None:
     op.execute(f"GRANT CONNECT ON DATABASE events TO {_APP_ROLE}")
     op.execute(f"GRANT USAGE ON SCHEMA public TO {_APP_ROLE}")
     op.execute(f"GRANT SELECT, INSERT ON events TO {_APP_ROLE}")
-    op.execute(f"GRANT SELECT ON daily_event_counts TO {_APP_ROLE}")
+    # daily_event_counts is dbt-owned (created by `dbt run`, not Alembic) —
+    # guarded the same way CREATE ROLE is above, since a genuinely fresh
+    # database (nothing has ever run `dbt run` against it yet) won't have
+    # this table when this migration first runs. Not load-bearing past
+    # that first run anyway: dbt/dbt_project.yml's marts +grants/+post-hook
+    # re-applies this exact grant after every `dbt run`, since dbt's table
+    # materialization drops and recreates the table (and wipes grants) each
+    # time — see that config's own comment.
+    op.execute(
+        f"""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'daily_event_counts') THEN
+                GRANT SELECT ON daily_event_counts TO {_APP_ROLE};
+            END IF;
+        END
+        $$;
+        """
+    )
 
     # `events` (the table owner, used by Alembic/dbt) is a Postgres
     # superuser via the POSTGRES_USER bootstrap env var — superusers bypass
@@ -70,7 +88,17 @@ def downgrade() -> None:
     """Downgrade schema."""
     op.execute("DROP POLICY IF EXISTS tenant_isolation ON events")
     op.execute("ALTER TABLE events DISABLE ROW LEVEL SECURITY")
-    op.execute(f"REVOKE ALL PRIVILEGES ON daily_event_counts FROM {_APP_ROLE}")
+    op.execute(
+        f"""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'daily_event_counts') THEN
+                REVOKE ALL PRIVILEGES ON daily_event_counts FROM {_APP_ROLE};
+            END IF;
+        END
+        $$;
+        """
+    )
     op.execute(f"REVOKE ALL PRIVILEGES ON events FROM {_APP_ROLE}")
     op.execute(f"REVOKE USAGE ON SCHEMA public FROM {_APP_ROLE}")
     op.execute(f"REVOKE CONNECT ON DATABASE events FROM {_APP_ROLE}")

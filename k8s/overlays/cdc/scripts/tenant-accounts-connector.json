@@ -1,0 +1,21 @@
+{
+  "name": "tenant-accounts-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "events",
+    "database.password": "events",
+    "database.dbname": "events",
+    "topic.prefix": "cdc",
+    "table.include.list": "public.tenant_accounts",
+    "plugin.name": "pgoutput",
+    "slot.name": "debezium_tenant_accounts",
+    "publication.name": "dbz_tenant_accounts_publication",
+    "publication.autocreate.mode": "filtered",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false"
+  }
+}

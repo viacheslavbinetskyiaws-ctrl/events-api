@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, FetchedValue, Index, func, text
+from sqlalchemy import BigInteger, Date, DateTime, FetchedValue, Index, SmallInteger, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -99,6 +99,23 @@ class TenantAccountORM(Base):
     )
 
 
+class TenantAccountChangeORM(Base):
+    __tablename__ = "tenant_account_changes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    source_lsn: Mapped[int] = mapped_column(BigInteger, unique=True)
+    tenant_account_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    op: Mapped[str] = mapped_column()
+    before: Mapped[dict | None] = mapped_column(JSONB)
+    after: Mapped[dict | None] = mapped_column(JSONB)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class DailyEventCountORM(DBTBase):
     """Read shape only — dbt owns this table's actual DDL (see
     dbt/models/marts/daily_event_counts.sql), not Alembic. This class just
@@ -111,3 +128,19 @@ class DailyEventCountORM(DBTBase):
     event_type: Mapped[str] = mapped_column(primary_key=True)
     utc_date: Mapped[date] = mapped_column(Date(), primary_key=True)
     event_count: Mapped[int] = mapped_column()
+
+
+class DataQualityRunORM(Base):
+    """Singleton table (id always 1, enforced by a CHECK constraint — see
+    migration dd949d031fce) — the CronJob-published status
+    /health/data-quality actually reads. Written by
+    dbt/scripts/publish_data_quality.py, not by this app; the app only
+    ever reads it (events_app has SELECT only, no write grant)."""
+
+    __tablename__ = "data_quality_runs"
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    passed: Mapped[bool] = mapped_column()
+    checks: Mapped[list] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

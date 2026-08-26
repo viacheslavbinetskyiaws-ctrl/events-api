@@ -14,12 +14,20 @@ class StreamingSettings(BaseSettings):
     PLAINTEXT_HOST listener from docker-compose.yml's kafka service, not
     9092 (that one's for containers on the Docker network, like
     kafka-connect; this process runs on the host).
+
+    mongo_uri's localhost:27017 is the same story: docker-compose.yml
+    publishes mongodb's 27017 to the host, and this process runs there
+    too, not inside the Docker network.
     """
 
     kafka_bootstrap_servers: str = "localhost:29092"
-    topic: str = "cdc.public.tenant_accounts"
-    consumer_group_id: str = "tenant-accounts-audit-consumer"
+    tenant_accounts_topic: str = "cdc.public.tenant_accounts"
+    events_topic: str = "cdc.public.events"
+    consumer_group_id: str = "cdc-audit-consumer"
     log_level: str = "INFO"
+
+    mongo_uri: str = "mongodb://localhost:27017"
+    mongo_database: str = "events_projection"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="STREAMING_")
 

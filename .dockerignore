@@ -5,7 +5,6 @@ __pycache__
 .ruff_cache
 .git
 tests
-dbt
 docker
 k8s
 terraform

@@ -18,6 +18,7 @@ spec:
       containers:
         - name: postgres
           image: postgres:17
+          args: ["postgres", "-c", "wal_level=logical"]
           envFrom:
             - secretRef:
                 name: postgres-credentials

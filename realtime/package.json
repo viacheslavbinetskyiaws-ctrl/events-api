@@ -1,0 +1,24 @@
+{
+  "name": "realtime",
+  "version": "0.1.0",
+  "description": "Real-time SSE relay for CDC events — reads Kafka, pushes live updates to tenant-scoped clients",
+  "main": "dist/index.mjs",
+  "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.mjs",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "kafkajs": "^2.2.4"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.3.0",
+    "tsdown": "^0.22.14",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}
