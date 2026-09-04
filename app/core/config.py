@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     environment: str = "local"
     log_level: str = "INFO"
     database_url: str = "postgresql+asyncpg://events_app:events_app@localhost:5432/events"
+    db_host: str | None = None
+    db_port: int = 5432
+    db_name: str = "events"
+    db_user: str = "events_app"
+    aws_region: str | None = None
     dbt_run_results_path: str = "../dbt/target/run_results.json"
     dbt_sources_path: str = "../dbt/target/sources.json"
 

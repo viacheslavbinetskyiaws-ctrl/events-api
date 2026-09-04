@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: events-api
+  namespace: events-api
+spec:
+  template:
+    spec:
+      serviceAccountName: events-api-app
+      containers:
+        - name: events-api
+          image: 938500344309.dkr.ecr.eu-central-1.amazonaws.com/events-api-app:latest
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: events-api-config
