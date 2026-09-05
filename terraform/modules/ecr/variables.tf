@@ -4,5 +4,5 @@ variable "name_prefix" {
 
 variable "repository_names" {
   type    = list(string)
-  default = ["app", "streaming", "dbt", "realtime"]
+  default = ["app", "streaming", "dbt", "realtime", "kafka-connect"]
 }

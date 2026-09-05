@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-consumer
+  namespace: events-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cdc-consumer
+  template:
+    metadata:
+      labels:
+        app: cdc-consumer
+    spec:
+      serviceAccountName: events-api-app
+      containers:
+        - name: cdc-consumer
+          image: 938500344309.dkr.ecr.eu-central-1.amazonaws.com/events-api-streaming:latest
+          imagePullPolicy: Always
+          env:
+            - name: STREAMING_KAFKA_BOOTSTRAP_SERVERS
+              value: "events-kafka-bootstrap:9092"
+          envFrom:
+            - secretRef:
+                name: streaming-mongo-credentials
+            - configMapRef:
+                name: events-api-config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

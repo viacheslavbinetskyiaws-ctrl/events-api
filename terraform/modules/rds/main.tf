@@ -20,6 +20,17 @@ resource "aws_vpc_security_group_ingress_rule" "db_postgres" {
   ip_protocol                  = "tcp"
 }
 
+resource "aws_db_parameter_group" "logical_replication" {
+  name   = "${var.name_prefix}-postgres18-logical-replication"
+  family = "postgres18"
+
+  parameter {
+    name         = "rds.logical_replication"
+    value        = "1"
+    apply_method = "pending-reboot"
+  }
+}
+
 resource "aws_db_instance" "this" {
   identifier     = "${var.name_prefix}-db"
   engine         = "postgres"
@@ -38,6 +49,8 @@ resource "aws_db_instance" "this" {
   iam_database_authentication_enabled = true
   publicly_accessible                 = false
   skip_final_snapshot                 = true
+
+  parameter_group_name = aws_db_parameter_group.logical_replication.name
 
   tags = {
     Name = "${var.name_prefix}-db"

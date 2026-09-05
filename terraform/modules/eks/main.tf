@@ -68,6 +68,17 @@ resource "aws_iam_role_policy_attachment" "node_ecr" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+# resource "aws_launch_template" "node" {
+#   name_prefix = "${var.name_prefix}-node-"
+
+#   tag_specifications {
+#     resource_type = "instance"
+#     tags = {
+#       Name = "${var.name_prefix}-node"
+#     }
+#   }
+# }
+
 resource "aws_eks_node_group" "this" {
   cluster_name    = aws_eks_cluster.this.name
   node_group_name = "${var.name_prefix}-default"
@@ -77,9 +88,9 @@ resource "aws_eks_node_group" "this" {
   ami_type        = "AL2023_ARM_64_STANDARD"
 
   scaling_config {
-    desired_size = 1
+    desired_size = 3
     min_size     = 1
-    max_size     = 2
+    max_size     = 3
   }
 
   depends_on = [
@@ -87,6 +98,11 @@ resource "aws_eks_node_group" "this" {
     aws_iam_role_policy_attachment.node_cni,
     aws_iam_role_policy_attachment.node_ecr,
   ]
+
+  # launch_template {
+  #   id      = aws_launch_template.node.id
+  #   version = aws_launch_template.node.latest_version
+  # }
 }
 
 data "aws_caller_identity" "current" {}
@@ -119,4 +135,46 @@ resource "aws_eks_access_policy_association" "root_admin" {
   access_scope {
     type = "cluster"
   }
+}
+
+data "aws_iam_policy_document" "ebs_csi_irsa_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.cluster.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:sub"
+      values   = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ebs_csi" {
+  name               = "${var.name_prefix}-ebs-csi"
+  assume_role_policy = data.aws_iam_policy_document.ebs_csi_irsa_trust.json
+}
+
+resource "aws_iam_role_policy_attachment" "ebs_csi" {
+  role       = aws_iam_role.ebs_csi.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicyV2"
+}
+
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name             = aws_eks_cluster.this.name
+  addon_name               = "aws-ebs-csi-driver"
+  service_account_role_arn = aws_iam_role.ebs_csi.arn
+
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
 }

@@ -1,0 +1,36 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnect
+metadata:
+  name: events-connect
+  namespace: events-api
+  annotations:
+    strimzi.io/use-connector-resources: "true"
+spec:
+  image: 938500344309.dkr.ecr.eu-central-1.amazonaws.com/events-api-kafka-connect:latest
+  replicas: 1
+  bootstrapServers: events-kafka-bootstrap:9092
+  groupId: events-connect-cluster
+  configStorageTopic: events-connect-configs
+  statusStorageTopic: events-connect-status
+  offsetStorageTopic: events-connect-offsets
+  config:
+    config.storage.replication.factor: 1
+    offset.storage.replication.factor: 1
+    status.storage.replication.factor: 1
+    config.providers: env
+    config.providers.env.class: org.apache.kafka.common.config.provider.EnvVarConfigProvider
+  template:
+    connectContainer:
+      env:
+        - name: DEBEZIUM_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: debezium-db-credentials
+              key: password
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi

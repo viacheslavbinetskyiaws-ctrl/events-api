@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: aws-cdc-create-publications
+  namespace: events-api
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-publications
+          image: postgres:18
+          command:
+            [
+              "psql",
+              "-v",
+              "ON_ERROR_STOP=1",
+              "-f",
+              "/scripts/create-publications.sql",
+            ]
+          env:
+            - name: PGHOST
+              value: events-api-db.choe4u6ye3yf.eu-central-1.rds.amazonaws.com
+            - name: PGUSER
+              value: events
+            - name: PGDATABASE
+              value: events
+            - name: PGSSLMODE
+              value: require
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rds-master-credentials
+                  key: password
+          volumeMounts:
+            - name: setup-scripts
+              mountPath: /scripts
+      volumes:
+        - name: setup-scripts
+          configMap:
+            name: aws-cdc-publications-sql

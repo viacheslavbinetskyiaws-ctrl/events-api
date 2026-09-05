@@ -107,32 +107,133 @@ alone runs ~$73/month, before any worker nodes or RDS.
 
 ### 3. Real Kafka and MongoDB, the production-pattern way
 
-- Kafka → **Strimzi Operator** (installed via Helm), not the hand-rolled
-  StatefulSet built during the kind migration. Mirrors the same arc as
-  Postgres→RDS: kind proved the raw StatefulSet/PVC mechanics deliberately (that
-  was the whole point of that migration); this phase graduates to the dominant
-  real-world pattern — an Operator that manages broker identity, PVCs, and
-  rolling upgrades declaratively, which is *why* hand-rolling Kafka is
-  comparatively rare in real production.
-- MongoDB → real, **self-hosted** MongoDB via a Helm chart or the MongoDB
-  Community Operator — deliberately **not** Amazon DocumentDB. DocumentDB is
-  API-compatible but not built on MongoDB's actual codebase (a different engine
-  under a similar API surface), with real, known gaps in aggregation operators,
-  index types, and transaction semantics. The posting names real MongoDB
-  specifically; DocumentDB would weaken that claim under any real technical
-  question, even though this project's actual Mongo usage (simple
-  `replace_one(upsert=True)`, no transactions, no change streams) wouldn't
-  personally hit most of those gaps.
-- CDC against RDS specifically: `rds.logical_replication` set on a DB Parameter
-  Group (RDS has no direct `postgresql.conf` access, unlike self-managed
-  Postgres's `wal_level=logical` flag) plus real VPC security groups gating
-  Kafka Connect's access to RDS — the genuinely new, AWS-specific lesson this
-  milestone is actually for.
-- New `gp3` `StorageClass` for Kafka/Mongo's `volumeClaimTemplates`, provisioned
-  via the AWS EBS CSI driver installed as a **Terraform-native
-  `aws_eks_addon`** — not Helm, since that's the cleaner IaC path for an
-  infra-level add-on (distinct from Strimzi/Mongo's own Helm-based install,
-  which is the actual standard path for *them*).
+**Scoped in detail before implementation** (2026-09-04 brainstorming session,
+against the still-live Milestone 1-2 infra — EKS/RDS were never actually torn
+down at the end of that session, `terraform state list` confirmed it). Findings
+below are decisions, not yet applied.
+
+- Kafka → **Strimzi Operator** (installed via Helm CLI, not a Terraform
+  `helm_release` — this repo has no Kubernetes/Helm Terraform provider
+  anywhere, and raw `helm install` matches Milestone 6's own precedent), not
+  the hand-rolled StatefulSet built during the kind migration. Mirrors the same
+  arc as Postgres→RDS: kind proved the raw StatefulSet/PVC mechanics
+  deliberately (that was the whole point of that migration); this phase
+  graduates to the dominant real-world pattern — an Operator that manages
+  broker identity, PVCs, and rolling upgrades declaratively, which is *why*
+  hand-rolling Kafka is comparatively rare in real production. Single-broker
+  KRaft (`replicas: 1`, with `default.replication.factor`/
+  `offsets.topic.replication.factor`/etc. all overridden to 1 — a single
+  broker can't satisfy Strimzi's normal RF defaults), no Entity Operator
+  (Topic/User CRDs not needed here, one fewer pod). Confirmed via
+  `docker buildx imagetools inspect`: Strimzi 1.2.0's operator image and its
+  Kafka broker image (`quay.io/strimzi/kafka:1.2.0-kafka-4.3.1`) both ship
+  `linux/arm64`, so this runs on the existing Graviton (`t4g.small`) node
+  group with no image-architecture surprise.
+- **Kafka Connect also moves to Strimzi's own CRDs** (`KafkaConnect` +
+  `KafkaConnector`), not a hand-rolled Deployment + curl-based registration
+  Job — corrected mid-scoping from an earlier draft of this plan that would
+  have kept the kind migration's bare Deployment pointed at
+  `debezium/connect:3.0.0.Final` directly. That image's entrypoint/
+  config-injection convention isn't Strimzi's, so pointing `KafkaConnect.spec.
+  image` straight at it is not a safe assumption. The correct, documented
+  pattern instead: a new custom image `FROM quay.io/strimzi/kafka:1.2.0-kafka-
+  4.3.1` with Debezium's Postgres connector plugin jars layered in, built and
+  pushed to a new `kafka-connect` ECR repo (5th entry in `modules/ecr`'s
+  `for_each`, alongside `app`/`streaming`/`dbt`/`realtime`) via the same
+  Dockerfile/ECR pipeline every other image in this repo already uses — not
+  Strimzi's in-cluster Kaniko `build:` mechanism, which needs extra in-cluster
+  permissions this project has no other reason to grant. Connectors themselves
+  become two `KafkaConnector` manifests (declarative, applied via
+  kubectl/Kustomize) instead of `k8s/overlays/cdc`'s idempotent-curl-script
+  Job — fully consistent with the broker being Operator-managed, not a
+  half-migration.
+- MongoDB → **MongoDB Community Operator** specifically (resolved from the
+  original "a Helm chart or the Community Operator" hedge) — deliberately
+  **not** Amazon DocumentDB. DocumentDB is API-compatible but not built on
+  MongoDB's actual codebase (a different engine under a similar API surface),
+  with real, known gaps in aggregation operators, index types, and transaction
+  semantics. The posting names real MongoDB specifically; DocumentDB would
+  weaken that claim under any real technical question, even though this
+  project's actual Mongo usage (simple `replace_one(upsert=True)`, no
+  transactions, no change streams) wouldn't personally hit most of those gaps.
+  The Operator over a Helm chart specifically: Milestone 6 already proved
+  "consume a vendored Helm chart" as a skill (Bitnami Postgres); the Operator
+  teaches the CRD-based lifecycle-management pattern a second time in a
+  different domain, the more interview-relevant repeat alongside Strimzi.
+  Confirmed via `docker buildx imagetools inspect`: all four Community
+  Operator component images (operator `0.13.0`, agent `108.0.6.8796-1`,
+  version-upgrade-hook `1.0.10`, readinessprobe `1.0.23`) ship `linux/arm64`.
+  `members: 1`, not the chart's default 3 — deliberately, to keep pod/PVC count
+  down given the node-capacity finding below; this does mean real SCRAM auth
+  and a `?replicaSet=` connection string, a genuine (if small) change to
+  `streaming/mongo.py`/`streaming/config.py` versus kind's unauthenticated bare
+  `mongo:7`.
+- **Node capacity, a real gap found while scoping**: the live node group is a
+  single `t4g.small` (1930m CPU / 1.36GiB allocatable, 5 pods already on it
+  before any of this). Summing real request values for every new pod (Kafka
+  broker 250m/512Mi, Kafka Connect 250m/512Mi, the consumer 100m/128Mi, the
+  Strimzi Cluster Operator 200m/384Mi — its own Helm chart's documented
+  default, the Community Operator's operator pod 500m/200Mi, one Mongo
+  replica-set member ~450m/712Mi) against the app's existing 100m/128Mi comes
+  to roughly 1.85 vCPU / 2.5GiB total requested. `desired_size` needs to go
+  1→2 (already within the existing `max_size = 2`, no Terraform limit change)
+  to fit this at all; even at 2 nodes memory utilization lands around 92% of
+  allocatable — tight, not broken. Fallback if pods sit `Pending`: bump
+  `max_size`/`desired_size` to 3 (~$13/mo more, cheap next to the EKS control
+  plane's ~$73/mo baseline already running).
+- CDC against RDS specifically: `rds.logical_replication` set on a
+  `aws_db_parameter_group` (family `postgres18` — confirmed via
+  `aws rds describe-db-engine-versions --engine postgres --default-only`
+  against the live account, not assumed; RDS has no direct `postgresql.conf`
+  access, unlike self-managed Postgres's `wal_level=logical` flag),
+  `apply_method = "pending-reboot"` since it's a static parameter — needs a
+  real manual `aws rds reboot-db-instance` after `terraform apply`, same
+  "real infra needs a real reboot" lesson as Milestone 2's storage-encryption
+  rebuild. **No new security group needed** — `modules/rds`'s existing
+  `db_postgres` ingress rule already references `cluster_security_group_id`,
+  whose own output docstring (Milestone 1) already states it's the correct
+  ingress source for pods too, not just nodes; this already satisfies what
+  this bullet originally called "real VPC security groups gating Kafka
+  Connect's access to RDS" — nothing new to build there, a found-already-
+  covered item, not a gap. Debezium's own DB credential: a new, dedicated k8s
+  Secret manually populated from the RDS master password
+  (`aws secretsmanager get-secret-value`) — same one-off-bootstrap precedent
+  as Milestone 2's `GRANT rds_iam` step; not IRSA, since Debezium has no
+  mechanism to refresh a 15-minute IAM token on its long-lived replication
+  connection. Whether the master user already carries `rds_replication` or
+  needs an explicit `GRANT` is still to be verified empirically against the
+  live instance during implementation, not assumed.
+- New `gp3` `StorageClass` for Kafka/Mongo's storage, provisioned via the AWS
+  EBS CSI driver installed as a **Terraform-native `aws_eks_addon`** (new IRSA
+  role trusting the existing OIDC provider, `AmazonEBSCSIDriverPolicy` under
+  its `service-role/` path, `resolve_conflicts_on_create` per the v6 provider
+  argument split Milestone 1 already logged) — not Helm, since that's the
+  cleaner IaC path for an infra-level add-on (distinct from Strimzi/Mongo's own
+  Helm-based install, which is the actual standard path for *them*). The
+  `StorageClass` itself: `volumeBindingMode: WaitForFirstConsumer` (EBS volumes
+  are AZ-bound; immediate binding risks a PVC provisioned in the wrong AZ for
+  the pod that needs it), `allowVolumeExpansion: true`, and deliberately **not**
+  marked cluster-default — EKS already ships a default `gp2`, and two defaults
+  is an error state; Kafka's and Mongo's volume specs reference `class: gp3`
+  explicitly instead.
+- New `k8s/overlays/aws-cdc/` (layers on `../aws`, the same chaining pattern
+  `k8s/overlays/realtime` already uses on `../cdc`) holds what Kustomize
+  actually owns here: the `KafkaConnector` manifests, the publications-creation
+  script retargeted at the RDS hostname, the consumer Deployment repointed at
+  Strimzi's `<cluster>-kafka-bootstrap:9092`, and the `gp3` `StorageClass`.
+  Strimzi's and Mongo's own Helm values/CRs (`helm/strimzi/values.yaml`, the
+  `Kafka`/`KafkaConnect`/`MongoDBCommunity` CRs) get committed as real files
+  too, not left as shell history — this project tears down and rebuilds
+  per-milestone, so reproducing the whole stack from git is load-bearing here,
+  the same reasoning `k8s/overlays/dbt`'s `configMapGenerator` already applied
+  to its own scripts.
+- Verification staged so a capacity problem shows up as an isolated failure,
+  not a pile of unexplained `Pending` pods: `terraform apply` → manual RDS
+  reboot → confirm `SHOW wal_level = logical` → `gp3` `StorageClass` proven
+  with a throwaway PVC → Strimzi + `Kafka` CR `Ready` → `MongoDBCommunity` CR
+  `Ready` → publications + `KafkaConnector`s registered → consumer running →
+  the actual bar from this document's own Verification section below:
+  `POST /events` → Kafka → consumer → Mongo, live.
 
 ### 4. Node/TypeScript real-time relay
 

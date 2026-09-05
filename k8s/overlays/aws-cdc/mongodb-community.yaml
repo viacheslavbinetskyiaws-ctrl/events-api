@@ -1,0 +1,40 @@
+apiVersion: mongodbcommunity.mongodb.com/v1
+kind: MongoDBCommunity
+metadata:
+  name: events-mongo
+  namespace: events-api
+spec:
+  members: 1
+  type: ReplicaSet
+  version: "7.0.0"
+  security:
+    authentication:
+      modes: ["SCRAM"]
+  users:
+    - name: cdc-consumer
+      db: admin
+      passwordSecretRef:
+        name: mongo-consumer-seed-password
+      roles:
+        - name: readWrite
+          db: events_projection
+      scramCredentialsSecretName: cdc-consumer-scram
+  statefulSet:
+    spec:
+      volumeClaimTemplates:
+        - metadata:
+            name: data-volume
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: gp3
+            resources:
+              requests:
+                storage: 2Gi
+        - metadata:
+            name: logs-volume
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: gp3
+            resources:
+              requests:
+                storage: 1Gi
