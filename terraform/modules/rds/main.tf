@@ -29,6 +29,12 @@ resource "aws_db_parameter_group" "logical_replication" {
     value        = "1"
     apply_method = "pending-reboot"
   }
+
+  parameter {
+    name         = "max_slot_wal_keep_size"
+    value        = "5000"
+    apply_method = "immediate"
+  }
 }
 
 resource "aws_db_instance" "this" {
@@ -36,9 +42,10 @@ resource "aws_db_instance" "this" {
   engine         = "postgres"
   instance_class = "db.t4g.micro"
 
-  allocated_storage = 20
-  db_name           = "events"
-  username          = "events"
+  allocated_storage     = 50
+  max_allocated_storage = 100
+  db_name               = "events"
+  username              = "events"
 
   manage_master_user_password = true
   storage_encrypted           = true
@@ -49,6 +56,7 @@ resource "aws_db_instance" "this" {
   iam_database_authentication_enabled = true
   publicly_accessible                 = false
   skip_final_snapshot                 = true
+  apply_immediately                   = true
 
   parameter_group_name = aws_db_parameter_group.logical_replication.name
 

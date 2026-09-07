@@ -37,3 +37,18 @@ output "app_irsa_role_arn" {
   description = "IRSA role ARN for the app's ServiceAccount annotation in k8s/overlays/aws/"
   value       = module.iam.app_irsa_role_arn
 }
+
+output "kafka_connect_gcp_irsa_role_arn" {
+  description = "IRSA role ARN for Kafka Connect's GCP WIF handshake"
+  value       = module.iam.kafka_connect_gcp_irsa_role_arn
+}
+
+output "kafka_connect_node_role_arn" {
+  description = "Node IAM role for the dedicated Kafka Connect node group — rebind GCP WIF's AWS provider trust to this ARN"
+  value       = module.eks.kafka_connect_node_role_arn
+}
+
+output "migration_irsa_role_arn" {
+  description = "IRSA role ARN for the migration Job's IAM auth as the owner role"
+  value       = module.iam.migration_irsa_role_arn
+}

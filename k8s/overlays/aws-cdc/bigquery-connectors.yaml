@@ -1,0 +1,55 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnector
+metadata:
+  name: bigquery-events-sink
+  namespace: events-api
+  labels:
+    strimzi.io/cluster: events-connect
+spec:
+  class: com.wepay.kafka.connect.bigquery.BigQuerySinkConnector
+  tasksMax: 1
+  config:
+    topics: cdc.public.events
+    project: project-e8569bd6-524d-42fe-bb9
+    defaultDataset: events_analytics
+    keyfile: /mnt/gcp/credential-config.json
+    keySource: FILE
+    sanitizeTopics: "true"
+    autoCreateTables: "false"
+    key.converter: org.apache.kafka.connect.json.JsonConverter
+    key.converter.schemas.enable: "false"
+    value.converter: org.apache.kafka.connect.json.JsonConverter
+    value.converter.schemas.enable: "false"
+    topic2TableMap: cdc.public.events:cdc_events
+    bigQueryPartitionDecorator: "false"
+    transforms: unwrap
+    transforms.unwrap.type: org.apache.kafka.connect.transforms.ExtractField$Value
+    transforms.unwrap.field: after
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaConnector
+metadata:
+  name: bigquery-tenant-accounts-sink
+  namespace: events-api
+  labels:
+    strimzi.io/cluster: events-connect
+spec:
+  class: com.wepay.kafka.connect.bigquery.BigQuerySinkConnector
+  tasksMax: 1
+  config:
+    topics: cdc.public.tenant_accounts
+    project: project-e8569bd6-524d-42fe-bb9
+    defaultDataset: events_analytics
+    keyfile: /mnt/gcp/credential-config.json
+    keySource: FILE
+    sanitizeTopics: "true"
+    autoCreateTables: "false"
+    key.converter: org.apache.kafka.connect.json.JsonConverter
+    key.converter.schemas.enable: "false"
+    value.converter: org.apache.kafka.connect.json.JsonConverter
+    value.converter.schemas.enable: "false"
+    topic2TableMap: cdc.public.tenant_accounts:cdc_tenant_accounts
+    bigQueryPartitionDecorator: "false"
+    transforms: unwrap
+    transforms.unwrap.type: org.apache.kafka.connect.transforms.ExtractField$Value
+    transforms.unwrap.field: after

@@ -20,6 +20,10 @@ spec:
     config.providers: env
     config.providers.env.class: org.apache.kafka.common.config.provider.EnvVarConfigProvider
   template:
+    serviceAccount:
+      metadata:
+        annotations:
+          eks.amazonaws.com/role-arn: arn:aws:iam::938500344309:role/events-api-iam-kafka-connect-gcp-irsa
     connectContainer:
       env:
         - name: DEBEZIUM_DB_PASSWORD
@@ -27,6 +31,30 @@ spec:
             secretKeyRef:
               name: debezium-db-credentials
               key: password
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /mnt/gcp/credential-config.json
+      volumeMounts:
+        - name: gcp-wif-credential-config
+          mountPath: /mnt/gcp
+    pod:
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: kafka-connect
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: eks.amazonaws.com/nodegroup
+                    operator: In
+                    values:
+                      - events-api-kafka-connect
+      volumes:
+        - name: gcp-wif-credential-config
+          configMap:
+            name: gcp-wif-credential-config
   resources:
     requests:
       cpu: 250m
@@ -34,3 +62,7 @@ spec:
     limits:
       cpu: 500m
       memory: 1Gi
+  jvmOptions:
+    javaSystemProperties:
+      - name: io.aiven.commons.auth.uri
+        value: http://169.254.169.254/latest/meta-data/iam/security-credentials,http://169.254.169.254/latest/meta-data/placement/availability-zone

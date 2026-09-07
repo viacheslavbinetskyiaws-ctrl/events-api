@@ -10,6 +10,8 @@ resources:
   - mongodb-community.yaml
   - consumer-deployment.yaml
   - create-publications-job.yaml
+  - gcp-wif-credential-config.yaml
+  - bigquery-connectors.yaml
 
 configMapGenerator:
   - name: aws-cdc-publications-sql

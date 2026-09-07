@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - ../../base
   - service-account.yaml
+  - migration-service-account.yaml
 
 patches:
   - path: delete-postgres-deployment.yaml

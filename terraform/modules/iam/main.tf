@@ -77,3 +77,77 @@ resource "aws_iam_role_policy_attachment" "app_irsa_rds" {
   role       = aws_iam_role.app_irsa.name
   policy_arn = aws_iam_policy.rds_connect.arn
 }
+
+data "aws_iam_policy_document" "kafka_connect_irsa_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [var.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:sub"
+      values   = ["system:serviceaccount:events-api:events-connect-connect"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "kafka_connect_gcp_irsa" {
+  name               = "${var.name_prefix}-kafka-connect-gcp-irsa"
+  assume_role_policy = data.aws_iam_policy_document.kafka_connect_irsa_trust.json
+}
+
+
+data "aws_iam_policy_document" "migration_irsa_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [var.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:sub"
+      values   = ["system:serviceaccount:events-api:events-api-migrate"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "migration_irsa" {
+  name               = "${var.name_prefix}-migration-irsa"
+  assume_role_policy = data.aws_iam_policy_document.migration_irsa_trust.json
+}
+
+data "aws_iam_policy_document" "migration_rds_connect" {
+  statement {
+    actions   = ["rds-db:connect"]
+    resources = ["arn:aws:rds-db:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:dbuser:${var.rds_resource_id}/events"]
+  }
+}
+
+resource "aws_iam_policy" "migration_rds_connect" {
+  name   = "${var.name_prefix}-migration-rds-connect"
+  policy = data.aws_iam_policy_document.migration_rds_connect.json
+}
+
+resource "aws_iam_role_policy_attachment" "migration_irsa_rds" {
+  role       = aws_iam_role.migration_irsa.name
+  policy_arn = aws_iam_policy.migration_rds_connect.arn
+}

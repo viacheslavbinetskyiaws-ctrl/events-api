@@ -2,13 +2,18 @@ import asyncio
 import os
 from logging.config import fileConfig
 
+import boto3
 from alembic import context
-from sqlalchemy import pool
-from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy import event, pool
+from sqlalchemy.engine import URL, Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config, create_async_engine
 
+from app.core.config import get_settings
 from app.core.db import Base
 from app.repositories import models  # noqa: F401  (registers EventORM on Base.metadata)
+
+settings = get_settings()
+MIGRATION_DB_USER = "events"
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -98,11 +103,38 @@ async def run_async_migrations() -> None:
 
     """
 
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    if settings.environment == "aws":
+        if settings.db_host is None:
+            raise RuntimeError("APP_DB_HOST must be set when APP_ENVIRONMENT=aws")
+        db_host = settings.db_host
+        rds_client = boto3.client("rds", region_name=settings.aws_region)
+
+        url = URL.create(
+            "postgresql+asyncpg",
+            username=MIGRATION_DB_USER,
+            host=db_host,
+            port=settings.db_port,
+            database=settings.db_name,
+        )
+        connectable = create_async_engine(
+            url,
+            poolclass=pool.NullPool,
+            connect_args={"ssl": "require"},
+        )
+
+        @event.listens_for(connectable.sync_engine, "do_connect")
+        def _inject_iam_token(dialect, conn_rec, cargs, cparams):
+            cparams["password"] = rds_client.generate_db_auth_token(
+                DBHostname=db_host,
+                Port=settings.db_port,
+                DBUsername=MIGRATION_DB_USER,
+            )
+    else:
+        connectable = async_engine_from_config(
+            config.get_section(config.config_ini_section, {}),
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

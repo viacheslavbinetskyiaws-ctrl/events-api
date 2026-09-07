@@ -12,6 +12,8 @@ This is a learning project — the user is preparing for a job interview and is 
 
 For symbol-level lookups in Python (`app/`, `streaming/`) or TypeScript (`realtime/`) files — where a function is defined, who calls it, what a type resolves to — prefer the LSP tool (`goToDefinition`/`findReferences`/`hover`/etc.) over grep. Grep is text matching: it false-positives on a comment or string mentioning the name and can't distinguish two same-named symbols in different scopes or an aliased import, where LSP resolves the actual code structure correctly. Grep/Read stay the right call for YAML/Terraform/config/markdown (no language server covers these) or a plain string search where the target isn't a code symbol.
 
+**Do not guess. Check.** Never state a specific expected outcome ("expect `1 to change`", "this shouldn't force replacement", "the property probably isn't gated") unless it's actually been verified against real docs, real schema, or a real prior command output — not plausible-sounding reasoning asserted with confidence. If verifying costs a command, run it. If it can't be verified in advance, say so plainly and let the real output speak, rather than predicting what it will show. A wrong confident guess costs more than an honest "let's see" — it reads as asserted fact and wastes a correction cycle when it's wrong. This has burned real time in this repo already (a Strimzi `/mnt`-path assumption, an Aiven credential-gating assumption, a miscounted Terraform plan) — always check before asserting.
+
 ## Commands
 
 Install dependencies (extras are optional workloads, not part of the base API image — see Architecture):

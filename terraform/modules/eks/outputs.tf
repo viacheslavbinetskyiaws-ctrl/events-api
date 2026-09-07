@@ -28,3 +28,8 @@ output "cluster_security_group_id" {
   description = "EKS-managed cluster security group — nodes/pods use this for network communication, the correct RDS ingress source"
   value       = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
 }
+
+output "kafka_connect_node_role_arn" {
+  description = "Node IAM role for the dedicated Kafka Connect node group — this is the AWS identity GCP WIF must trust now, not the old IRSA role"
+  value       = aws_iam_role.node_kafka_connect.arn
+}
