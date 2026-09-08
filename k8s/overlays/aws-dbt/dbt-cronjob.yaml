@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dbt-build
+  namespace: events-api
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: events-api-dbt
+          restartPolicy: OnFailure
+          containers:
+            - name: dbt-build
+              image: 938500344309.dkr.ecr.eu-central-1.amazonaws.com/events-api-dbt:latest
+              imagePullPolicy: Always
+              command: ["sh", "scripts/run_and_publish.sh"]
+              env:
+                - name: APP_ENVIRONMENT
+                  value: aws
+                - name: APP_AWS_REGION
+                  value: eu-central-1
+                - name: DBT_HOST
+                  value: events-api-db.choe4u6ye3yf.eu-central-1.rds.amazonaws.com
+                - name: DBT_PORT
+                  value: "5432"
+                - name: DBT_USER
+                  value: events
+                - name: DBT_DBNAME
+                  value: events
+                - name: DBT_SSLMODE
+                  value: require
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi

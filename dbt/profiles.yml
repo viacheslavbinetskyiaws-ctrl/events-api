@@ -16,6 +16,7 @@ events_analytics:
       user: "{{ env_var('DBT_USER', 'events') }}"
       password: "{{ env_var('DBT_PASSWORD', 'events') }}"
       dbname: "{{ env_var('DBT_DBNAME', 'events') }}"
+      sslmode: "{{ env_var('DBT_SSLMODE', 'prefer') }}"
       schema: public
       threads: 4
     bigquery:

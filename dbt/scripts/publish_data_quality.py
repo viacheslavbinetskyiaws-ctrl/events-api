@@ -19,6 +19,7 @@ import json
 import os
 from pathlib import Path
 
+import boto3
 import psycopg2
 
 # Deliberate duplicate of app/services/data_quality.py's
@@ -102,6 +103,23 @@ def main() -> None:
         conn.close()
 
     print(f"data_quality_runs updated: passed={passed}, {len(checks)} checks")
+
+    # Second destination for the same passed boolean — a genuinely different
+    # signal type (continuous Prometheus-style metrics don't fit a one-shot
+    # batch job's exit status naturally) gets a genuinely different tool.
+    if os.environ.get("APP_ENVIRONMENT") == "aws":
+        cloudwatch = boto3.client("cloudwatch", region_name=os.environ["APP_AWS_REGION"])
+        cloudwatch.put_metric_data(
+            Namespace="EventsApi/DataQuality",
+            MetricData=[
+                {
+                    "MetricName": "DbtBuildPassed",
+                    "Value": 1.0 if passed else 0.0,
+                    "Unit": "None",
+                }
+            ],
+        )
+        print(f"CloudWatch metric pushed: DbtBuildPassed={1.0 if passed else 0.0}")
 
 
 if __name__ == "__main__":

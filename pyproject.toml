@@ -10,6 +10,7 @@ dependencies = [
     "boto3>=1.43.88",
     "fastapi-swagger-dark>=0.0.9",
     "fastapi[standard-no-fastapi-cloud-cli]>=0.139.2",
+    "prometheus-fastapi-instrumentator>=8.1.0",
     "pydantic-settings>=2.14.2",
     "sqlalchemy[asyncio]>=2.0.51",
 ]
@@ -42,7 +43,7 @@ mongodb = ["pymongo>=4.15"]
 
 [dependency-groups]
 dev = [
-    "boto3-stubs[rds]>=1.43.88",
+    "boto3-stubs[rds,cloudwatch]>=1.43.88",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",

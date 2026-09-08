@@ -151,3 +151,69 @@ resource "aws_iam_role_policy_attachment" "migration_irsa_rds" {
   role       = aws_iam_role.migration_irsa.name
   policy_arn = aws_iam_policy.migration_rds_connect.arn
 }
+
+data "aws_iam_policy_document" "dbt_irsa_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [var.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:sub"
+      values   = ["system:serviceaccount:events-api:events-api-dbt"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "dbt_irsa" {
+  name               = "${var.name_prefix}-dbt-irsa"
+  assume_role_policy = data.aws_iam_policy_document.dbt_irsa_trust.json
+}
+
+data "aws_iam_policy_document" "dbt_rds_connect" {
+  statement {
+    actions   = ["rds-db:connect"]
+    resources = ["arn:aws:rds-db:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:dbuser:${var.rds_resource_id}/events"]
+  }
+}
+
+
+resource "aws_iam_policy" "dbt_rds_connect" {
+  name   = "${var.name_prefix}-dbt-rds-connect"
+  policy = data.aws_iam_policy_document.dbt_rds_connect.json
+}
+
+resource "aws_iam_role_policy_attachment" "dbt_irsa_rds" {
+  role       = aws_iam_role.dbt_irsa.name
+  policy_arn = aws_iam_policy.dbt_rds_connect.arn
+}
+
+# cloudwatch:PutMetricData has no resource-level scoping in IAM — Resource
+# "*" is a documented AWS constraint on this specific action, not a design
+# gap.
+data "aws_iam_policy_document" "dbt_cloudwatch_put_metric" {
+  statement {
+    actions   = ["cloudwatch:PutMetricData"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "dbt_cloudwatch_put_metric" {
+  name   = "${var.name_prefix}-dbt-cloudwatch-put-metric"
+  policy = data.aws_iam_policy_document.dbt_cloudwatch_put_metric.json
+}
+
+resource "aws_iam_role_policy_attachment" "dbt_irsa_cloudwatch" {
+  role       = aws_iam_role.dbt_irsa.name
+  policy_arn = aws_iam_policy.dbt_cloudwatch_put_metric.arn
+}

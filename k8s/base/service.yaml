@@ -3,9 +3,12 @@ kind: Service
 metadata:
   name: events-api
   namespace: events-api
+  labels:
+    app: events-api
 spec:
   selector:
     app: events-api
   ports:
-    - port: 8000
+    - name: http
+      port: 8000
       targetPort: 8000

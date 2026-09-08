@@ -21,3 +21,8 @@ output "migration_irsa_role_arn" {
   description = "IRSA role ARN for the migration Job's IAM auth as the owner role"
   value       = aws_iam_role.migration_irsa.arn
 }
+
+output "dbt_irsa_role_arn" {
+  description = "IRSA role ARN for the dbt CronJob's IAM auth as the owner role, plus CloudWatch metric push"
+  value       = aws_iam_role.dbt_irsa.arn
+}

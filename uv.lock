@@ -139,6 +139,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+cloudwatch = [
+    { name = "mypy-boto3-cloudwatch" },
+]
 rds = [
     { name = "mypy-boto3-rds" },
 ]
@@ -1192,6 +1195,7 @@ dependencies = [
     { name = "boto3" },
     { name = "fastapi", extra = ["standard-no-fastapi-cloud-cli"] },
     { name = "fastapi-swagger-dark" },
+    { name = "prometheus-fastapi-instrumentator" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
@@ -1213,7 +1217,7 @@ streaming = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "boto3-stubs", extra = ["rds"] },
+    { name = "boto3-stubs", extra = ["cloudwatch", "rds"] },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -1231,6 +1235,7 @@ requires-dist = [
     { name = "dbt-postgres", marker = "extra == 'dbt'", specifier = ">=1.11.0" },
     { name = "fastapi", extras = ["standard-no-fastapi-cloud-cli"], specifier = ">=0.139.2" },
     { name = "fastapi-swagger-dark", specifier = ">=0.0.9" },
+    { name = "prometheus-fastapi-instrumentator", specifier = ">=8.1.0" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "pymongo", marker = "extra == 'mongodb'", specifier = ">=4.15" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.51" },
@@ -1239,7 +1244,7 @@ provides-extras = ["dbt", "streaming", "bigquery", "mongodb"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "boto3-stubs", extras = ["rds"], specifier = ">=1.43.88" },
+    { name = "boto3-stubs", extras = ["rds", "cloudwatch"], specifier = ">=1.43.88" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
@@ -1395,6 +1400,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/2f/e1/aab6c946570496b78e67804721f3d5e2d62a93081b9b37df77764ef56347/msgpack-1.2.1-cp314-cp314t-win32.whl", hash = "sha256:c1c79a604a2969a868a78b6ebd27a887e00c624f14f66b3038e0590cb23332d1", size = 70914, upload-time = "2026-06-18T16:13:49.385Z" },
     { url = "https://files.pythonhosted.org/packages/13/0a/e608956488a2af014cfe6e3d665e090b8ee42aa14b07f8f95b8880d66b09/msgpack-1.2.1-cp314-cp314t-win_amd64.whl", hash = "sha256:f12038a35fabd52e56a3547bab42401af49a45caa6dd00b34c44de235bc93ee2", size = 77999, upload-time = "2026-06-18T16:13:50.467Z" },
     { url = "https://files.pythonhosted.org/packages/d2/8a/27e2e57055176e366a46b85d02d68e7a5bcfbdd8474c9706375d965f24d3/msgpack-1.2.1-cp314-cp314t-win_arm64.whl", hash = "sha256:0adcf06ffde0777c0e1a9b771a2b1c4226ba1bbf748c8efcc02fcdeca3299107", size = 71160, upload-time = "2026-06-18T16:13:51.498Z" },
+]
+
+[[package]]
+name = "mypy-boto3-cloudwatch"
+version = "1.43.78"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/1a/69354584a68e0de337482dbdbdfdf80e6cdf6a8114b0b5a4a7e5684d7f43/mypy_boto3_cloudwatch-1.43.78.tar.gz", hash = "sha256:80f25b5750e6b61a1ca78f443623bd343edec144ee0215d5fe702cc64c3e5060", size = 39828, upload-time = "2026-08-21T19:53:12.467Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/a6/50898f267a3875f5c61e59da358994886476c9989290ccc65f6cd15a36b6/mypy_boto3_cloudwatch-1.43.78-py3-none-any.whl", hash = "sha256:341d7a339afca607ec116503f8423b48dd4a1a875148ad0bfef9f2ecaf391d06", size = 49289, upload-time = "2026-08-21T19:53:11.137Z" },
 ]
 
 [[package]]
@@ -1594,6 +1608,28 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "prometheus-client"
+version = "0.26.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/73/f1334c29c2af4cd9dba6c7817e61b611bd0215e2eb5565c6064a4de18802/prometheus_client-0.26.0.tar.gz", hash = "sha256:04a91bcf94e2cf74a44a1a874d651a2e853ed354b6e822f3b7487751465d5c2b", size = 92910, upload-time = "2026-07-24T19:36:41.893Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/eb/a3/b69efbf4143b5b9859b977770bbbabcc2796b702fa69dc40271e45cd5a56/prometheus_client-0.26.0-py3-none-any.whl", hash = "sha256:fa93d06737aa02bacd05794768508bb97d2fbee28cb3bca04eaae92f0ca953d6", size = 64494, upload-time = "2026-07-24T19:36:40.854Z" },
+]
+
+[[package]]
+name = "prometheus-fastapi-instrumentator"
+version = "8.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "prometheus-client" },
+    { name = "starlette" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/f4/cdcebf7094b03b99fba71ac8f56bd6f227973642662f49d272332d8419b3/prometheus_fastapi_instrumentator-8.1.0.tar.gz", hash = "sha256:b77f3043665e8d28e2bbd21017506195a43d9adf1d402d01bf95b494b7e560e1", size = 20492, upload-time = "2026-07-26T11:12:44.202Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/44/b9/91a2246e6cf01b7ccb14479803c8a50f9c258ae5c6a0f16ba3294820632b/prometheus_fastapi_instrumentator-8.1.0-py3-none-any.whl", hash = "sha256:b9f40b2cff3f7891ca0610b3ae4fc6ec723fd326b04bb659819aaeb821a0fc7d", size = 19649, upload-time = "2026-07-26T11:12:45.168Z" },
 ]
 
 [[package]]

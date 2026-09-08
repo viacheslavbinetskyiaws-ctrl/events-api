@@ -1,0 +1,68 @@
+# Trimmed for this cluster's actual remaining capacity (nodes confirmed live
+# at 82-97% memory-requested before this install). nodeExporter is the one
+# component cut entirely — it's a DaemonSet (must schedule on every
+# untainted node, no scheduler choice) exporting host-OS-level EC2 stats
+# nothing in this project reads. kubeStateMetrics stays: it's a single
+# Deployment pod the scheduler can place anywhere, and its
+# kube_deployment_status_replicas metric is what feeds this milestone's
+# Grafana dashboard (and Milestone 7's HPA-replica-count bonus later).
+nodeExporter:
+  enabled: false
+
+alertmanager:
+  enabled: false
+  # alertmanagerSpec:
+  #   resources:
+  #     requests:
+  #       cpu: 25m
+  #       memory: 64Mi
+  #     limits:
+  #       cpu: 100m
+  #       memory: 128Mi
+
+prometheus:
+  prometheusSpec:
+    tolerations:
+      - key: dedicated
+        operator: Equal
+        value: kafka-connect
+        effect: NoSchedule
+    retention: 6h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+grafana:
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: kafka-connect
+      effect: NoSchedule
+  sidecar:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

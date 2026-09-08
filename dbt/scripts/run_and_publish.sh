@@ -5,6 +5,10 @@
 # codes, always runs every step, and only fails the Job at the very end
 # if something genuinely did fail — so a real failure still shows up as
 # a failed Job, but never at the cost of skipping the publish step.
+if [ "$APP_ENVIRONMENT" = "aws" ]; then
+  export DBT_PASSWORD=$(python scripts/generate_db_token.py)
+fi
+
 set +e
 
 dbt build

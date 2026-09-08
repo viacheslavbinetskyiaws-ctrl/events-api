@@ -1,6 +1,7 @@
 import fastapi_swagger_dark as fsd
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.routers import admin, analytics, events, health
 from app.core.config import get_settings
@@ -22,6 +23,8 @@ app.include_router(health.router)
 app.include_router(events.router)
 app.include_router(analytics.router)
 app.include_router(admin.router)
+
+Instrumentator().instrument(app).expose(app)
 
 
 @app.exception_handler(EventNotFoundError)
