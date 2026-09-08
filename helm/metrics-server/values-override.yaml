@@ -1,0 +1,15 @@
+# EKS kubelet serving certs aren't signed by the cluster CA by default —
+# metrics-server's own docs (README.md) state the requirement plainly:
+# "the Kubelet certificate should be signed by the cluster Certificate
+# Authority, or certificate validation must be disabled." This is the
+# AWS-documented mitigation for EKS specifically, not a workaround.
+args:
+  - --kubelet-insecure-tls
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+  limits:
+    cpu: 200m
+    memory: 400Mi

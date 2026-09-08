@@ -49,6 +49,22 @@ data:
               "legendFormat": "replicas"
             }
           ]
+        },
+        {
+          "id": 4,
+          "title": "HPA current vs desired replicas",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+          "targets": [
+            {
+              "expr": "kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler=\"events-api\", namespace=\"events-api\"}",
+              "legendFormat": "current"
+            },
+            {
+              "expr": "kube_horizontalpodautoscaler_status_desired_replicas{horizontalpodautoscaler=\"events-api\", namespace=\"events-api\"}",
+              "legendFormat": "desired"
+            }
+          ]
         }
       ]
     }

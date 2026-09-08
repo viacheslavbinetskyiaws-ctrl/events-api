@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: events-api-load-test
+  namespace: events-api
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: load-test
+          image: curlimages/curl:8.11.0
+          resources:
+            requests:
+              cpu: 500m
+              memory: 64Mi
+            limits:
+              cpu: 1000m
+              memory: 128Mi
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              END=$(( $(date +%s) + 240 ))
+              i=0
+              while [ $i -lt 40 ]; do
+                (
+                  n=0
+                  while true; do
+                    curl -s -o /dev/null http://events-api.events-api.svc.cluster.local:8000/healthz
+                    n=$((n+1))
+                    if [ $((n % 50)) -eq 0 ]; then
+                      [ "$(date +%s)" -ge "$END" ] && break
+                    fi
+                  done
+                ) &
+                i=$((i+1))
+              done
+              wait
