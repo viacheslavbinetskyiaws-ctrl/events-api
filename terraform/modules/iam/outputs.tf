@@ -26,3 +26,8 @@ output "dbt_irsa_role_arn" {
   description = "IRSA role ARN for the dbt CronJob's IAM auth as the owner role, plus CloudWatch metric push"
   value       = aws_iam_role.dbt_irsa.arn
 }
+
+output "k8s_viewer_role_arn" {
+  description = "IAM role for the least-privilege K8s RBAC demo — no AWS permissions attached, only trusted to authenticate to EKS via an access-entry Kubernetes group"
+  value       = aws_iam_role.k8s_viewer.arn
+}

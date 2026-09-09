@@ -216,6 +216,16 @@ resource "aws_eks_access_policy_association" "root_admin" {
   }
 }
 
+# Deliberately no aws_eks_access_policy_association here — this identity's
+# only path to any permission is the hand-written Role/RoleBinding in
+# k8s/overlays/aws/viewer-rbac.yaml, not an AWS-managed policy fallback.
+resource "aws_eks_access_entry" "k8s_viewer" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.k8s_viewer_role_arn
+
+  kubernetes_groups = ["events-api-viewers"]
+}
+
 data "aws_iam_policy_document" "ebs_csi_irsa_trust" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]

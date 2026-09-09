@@ -6,6 +6,8 @@ resources:
   - service-account.yaml
   - migration-service-account.yaml
   - hpa.yaml
+  - viewer-service-account.yaml
+  - viewer-rbac.yaml
 
 patches:
   - path: delete-postgres-deployment.yaml

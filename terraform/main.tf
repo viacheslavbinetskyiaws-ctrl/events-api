@@ -30,9 +30,10 @@ module "ecr" {
 module "eks" {
   source = "./modules/eks"
 
-  name_prefix        = "events-api"
-  cluster_subnet_ids = concat(module.networking.subnet_ids, module.networking.private_subnet_ids)
-  node_subnet_ids    = module.networking.private_subnet_ids
+  name_prefix         = "events-api"
+  cluster_subnet_ids  = concat(module.networking.subnet_ids, module.networking.private_subnet_ids)
+  node_subnet_ids     = module.networking.private_subnet_ids
+  k8s_viewer_role_arn = module.iam.k8s_viewer_role_arn
 }
 
 module "rds" {

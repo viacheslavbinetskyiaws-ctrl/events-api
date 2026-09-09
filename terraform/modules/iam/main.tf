@@ -217,3 +217,24 @@ resource "aws_iam_role_policy_attachment" "dbt_irsa_cloudwatch" {
   role       = aws_iam_role.dbt_irsa.name
   policy_arn = aws_iam_policy.dbt_cloudwatch_put_metric.arn
 }
+
+# Zero AWS permissions attached, deliberately — same shape as
+# kafka_connect_gcp_irsa above: this role's only job is proving "this is a
+# legitimate AWS-authenticated caller." All real authorization for this
+# identity comes from Kubernetes RBAC (see k8s/overlays/aws/viewer-rbac.yaml),
+# not from anything IAM grants it.
+data "aws_iam_policy_document" "k8s_viewer_trust" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "AWS"
+      identifiers = [data.aws_caller_identity.current.arn]
+    }
+  }
+}
+
+resource "aws_iam_role" "k8s_viewer" {
+  name               = "${var.name_prefix}-k8s-viewer"
+  assume_role_policy = data.aws_iam_policy_document.k8s_viewer_trust.json
+}

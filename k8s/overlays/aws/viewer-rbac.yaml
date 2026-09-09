@@ -1,0 +1,29 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: events-api-viewer
+  namespace: events-api
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: events-api-viewer
+  namespace: events-api
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: events-api-viewer
+subjects:
+  - kind: Group
+    name: events-api-viewers
+    apiGroup: rbac.authorization.k8s.io
+  - kind: ServiceAccount
+    name: events-api-viewer
+    namespace: events-api

@@ -216,13 +216,30 @@ kubectl --context events-api-viewer auth can-i get pods -n kube-system      # ex
 
 ```bash
 kubectl -n events-api run rbac-verify --rm -i --restart=Never \
-  --serviceaccount=events-api-viewer --image=bitnami/kubectl:latest \
+  --image=rancher/kubectl:v1.36.2 \
+  --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"events-api-viewer"}}' \
   -- auth can-i get pods -n events-api        # expect: yes
 
 kubectl -n events-api run rbac-verify --rm -i --restart=Never \
-  --serviceaccount=events-api-viewer --image=bitnami/kubectl:latest \
+  --image=rancher/kubectl:v1.36.2 \
+  --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"events-api-viewer"}}' \
   -- auth can-i delete deployments -n events-api   # expect: no
 ```
+
+`kubectl run` has no `--serviceaccount` flag (confirmed live against this
+client's actual `v1.36.1` help output, not assumed) — setting the pod's
+ServiceAccount this way needs `--overrides` with a raw JSON patch instead.
+
+`rancher/kubectl:v1.36.2`, not `bitnami/kubectl` — Broadcom restructured
+Bitnami's free Docker Hub catalog starting August 28, 2025 (old images moved
+to the frozen, unmaintained `bitnamilegacy` repo; the free replacement,
+`bitnamisecure`, is capped to a `latest` tag with no version pinning).
+Confirmed live via `docker buildx imagetools inspect`: `rancher/kubectl`
+publishes real, actively-maintained, version-pinned multi-arch
+(`linux/amd64`+`linux/arm64`) images — `v1.36.2` matches this cluster's
+own Kubernetes version exactly (`aws eks describe-cluster` →
+`cluster.version = "1.36"`), avoiding client/server version skew as a
+side benefit of dodging the licensing question entirely.
 
 **Honest framing for the writeup**: the correct claim is "denied every
 write in `events-api`, and denied all `secrets` reads" — not "denied
