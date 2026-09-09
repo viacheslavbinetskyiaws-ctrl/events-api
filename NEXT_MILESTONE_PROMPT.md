@@ -34,13 +34,42 @@ rather than rediscover:**
   one ready replica — and `realtime` needs Kafka reachable to avoid
   crash-looping on startup (confirmed in Milestone 4's own work: it
   subscribes to `cdc.public.events`/`cdc.public.tenant_accounts` at boot).
-  Scaling the whole stack back up (`strimzi-cluster-operator`,
-  `mongodb-kubernetes-operator` first, then `realtime`) needs to happen
-  before ALB routing can be verified end-to-end, not assumed to already be
-  running. Check the account's known 8-vCPU node-group quota (Milestone 6)
-  and the dedicated Kafka Connect node group's continued taint/existence
-  live before assuming the same capacity headroom Milestone 3 originally
-  sized this stack for is still exactly accurate.
+  - **Bring up the minimal subset, not the whole stack.** This milestone's
+    verification only needs real CDC events reaching the `realtime`
+    relay's SSE stream — that needs Kafka broker + Kafka Connect (with the
+    Debezium *source* connectors registered, so real change events land on
+    the topics) + `realtime` itself. It does **not** need MongoDB, the
+    Python `streaming/consumer.py` process, or the BigQuery sink
+    connectors — none of those feed the SSE path, and skipping them keeps
+    the memory footprint meaningfully below what forced Milestone 6's
+    stack-to-zero fix in the first place. Bring up
+    `strimzi-cluster-operator` first (it reconciles the untouched `Kafka`/
+    `KafkaNodePool`/`KafkaConnect` CRs), then `realtime` — skip
+    `mongodb-kubernetes-operator` and the consumer entirely unless
+    something in this session's own scoping decides otherwise.
+  - **Known hard ceiling, unrelated to memory**: the account's 8-vCPU
+    node-group quota (Milestone 6) is already fully consumed by the
+    existing 4-node fleet (3 default + 1 dedicated Kafka Connect,
+    confirm the latter's taint/existence is still live) — there is no
+    5th node available regardless of what fits in memory. Check real
+    per-node headroom live (`kubectl top nodes`, `kubectl describe hpa`
+    for `events-api`'s own footprint) once the minimal subset is up,
+    rather than assume Milestone 3's original sizing still holds now that
+    kube-prometheus-stack (Milestone 6) and `metrics-server` (Milestone 7)
+    also share these same nodes.
+  - **If it still doesn't fit, the fallback order is Grafana, then
+    Prometheus — not Mongo/the consumer (already skipped above) and not
+    `metrics-server`.** Scale `kube-prometheus-stack-grafana`
+    (`monitoring` namespace) to zero first — pure UI, nothing depends on
+    it, trivially reversible. If that alone isn't enough, scale the
+    `prometheus-kube-prometheus-stack-prometheus` StatefulSet
+    (`monitoring`) down next — scraping just pauses, nothing corrupts.
+    Leave `metrics-server`/`kube-state-metrics` alone regardless — both
+    are already lightweight, and losing `metrics-server` specifically
+    would regress Milestone 7's own proven HPA back to reporting
+    `<unknown>` targets for negligible capacity gain. This is a fallback
+    *order* to reach for only if the minimal subset genuinely doesn't fit
+    — not something to do preemptively before checking real numbers.
 - **VPC subnets are already tagged for this milestone, from Milestone 1** —
   `kubernetes.io/role/elb` (public subnets) / `kubernetes.io/role/internal-elb`
   (private subnets), added proactively specifically because "retrofitting
