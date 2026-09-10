@@ -466,6 +466,37 @@ Deliberately last — a cleanup/completeness item, not something blocking any ot
 - The credential-config JSON itself isn't a first-class Terraform resource — it's a `gcloud iam workload-identity-pools create-cred-config` CLI side effect. Decide at implementation time whether to keep that CLI step even after Terraform owns the underlying pool/provider, or hand-build the JSON via `templatefile()` matching the schema `google-auth-library-java` expects (`audience`, `subject_token_type`, `token_url`, `credential_source` including `imdsv2_session_token_url`).
 - Rough estimate given when this was scoped: 1.5-2.5 hours, with the import step as the main source of uncertainty — flagged as an estimate, not a commitment, given this project's own repeated experience of unknowns running longer than expected.
 
+### 13. (Optional, not yet scheduled) Domain registration + multi-env routing
+
+Candidate follow-on, not committed like Milestones 0-12 — added 2026-09-10 during
+Milestone 9 brainstorming so the idea isn't lost, not because it's next in
+sequence. Milestone 9 itself stays plain HTTP against the ALB's own DNS name;
+this is intentionally a separate exercise, not something to fold into it.
+
+- Distinct lesson from Milestone 9: Milestone 9 is path-based routing to two
+  backends within one environment. This milestone is environment separation —
+  one registered domain, subdomains per environment (`dev.<domain>`,
+  `api.<domain>`, etc.), a wildcard ACM cert (`*.<domain>`, one DNS validation
+  covers every subdomain), and Route53 ALIAS records per environment pointing
+  at each environment's own ALB/CloudFront.
+- Real, non-refundable cost, confirmed against AWS's own pricing page (not
+  assumed): Route 53 domain registration has no free tier and explicitly can't
+  be paid with promotional credit ("You may not use Promotional Credit for any
+  fees or charges for Route 53 domain name registration") — relevant here
+  since this project's AWS account runs on promotional credit, not the
+  metered Free Tier. Registration price varies by TLD (per-domain-per-year, no
+  volume discount); a separate $0.50/hosted-zone/month fee applies on top for
+  as long as the zone exists.
+- Reasoning for buying one real domain rather than simulating locally: this
+  project already tears down infra every session, so a persistent owned
+  domain (kept across sessions, reused across future projects) pairs
+  naturally with that pattern — domain ownership is long-lived infrastructure,
+  workload infra is ephemeral, which is itself a realistic separation worth
+  practicing.
+- Deliberately kept out of Milestone 9 rather than folded in: mixing two
+  different lessons (single-env path routing vs. multi-env subdomain
+  separation) into one session would teach both worse than either done alone.
+
 ## Explicitly skipped, not deferred
 
 - **A full TypeScript/Node.js backend rewrite** — not what Milestone 4 is. One

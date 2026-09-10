@@ -62,3 +62,8 @@ output "k8s_viewer_role_arn" {
   description = "IAM role for the least-privilege K8s RBAC demo — no AWS permissions attached, only trusted to authenticate to EKS via an access-entry Kubernetes group"
   value       = module.iam.k8s_viewer_role_arn
 }
+
+output "alb_controller_role_arn" {
+  description = "IRSA role ARN for the AWS Load Balancer Controller's kube-system ServiceAccount"
+  value       = module.iam.alb_controller_role_arn
+}

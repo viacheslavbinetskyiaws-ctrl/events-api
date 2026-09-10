@@ -11,7 +11,7 @@ spec:
   config:
     database.hostname: events-api-db.choe4u6ye3yf.eu-central-1.rds.amazonaws.com
     database.port: "5432"
-    database.user: events
+    database.user: debezium_replication
     database.password: "${env:DEBEZIUM_DB_PASSWORD}"
     database.dbname: events
     database.sslmode: require
@@ -20,7 +20,7 @@ spec:
     plugin.name: pgoutput
     slot.name: debezium_tenant_accounts
     publication.name: dbz_tenant_accounts_publication
-    publication.autocreate.mode: filtered
+    publication.autocreate.mode: disabled
     key.converter: org.apache.kafka.connect.json.JsonConverter
     key.converter.schemas.enable: "false"
     value.converter: org.apache.kafka.connect.json.JsonConverter
@@ -39,7 +39,7 @@ spec:
   config:
     database.hostname: events-api-db.choe4u6ye3yf.eu-central-1.rds.amazonaws.com
     database.port: "5432"
-    database.user: events
+    database.user: debezium_replication
     database.password: "${env:DEBEZIUM_DB_PASSWORD}"
     database.dbname: events
     database.sslmode: require
@@ -48,7 +48,7 @@ spec:
     plugin.name: pgoutput
     slot.name: debezium_events
     publication.name: dbz_events_publication
-    publication.autocreate.mode: filtered
+    publication.autocreate.mode: disabled
     key.converter: org.apache.kafka.connect.json.JsonConverter
     key.converter.schemas.enable: "false"
     value.converter: org.apache.kafka.connect.json.JsonConverter

@@ -238,3 +238,44 @@ resource "aws_iam_role" "k8s_viewer" {
   name               = "${var.name_prefix}-k8s-viewer"
   assume_role_policy = data.aws_iam_policy_document.k8s_viewer_trust.json
 }
+
+# The ALB Controller's IRSA role — real AWS permissions attached (unlike
+# k8s_viewer/kafka_connect_gcp_irsa above), since this identity actually
+# calls the EC2/ELB APIs to create and manage real load balancers.
+data "aws_iam_policy_document" "alb_controller_irsa_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [var.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:sub"
+      values   = ["system:serviceaccount:kube-system:aws-load-balancer-controller"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "alb_controller_irsa" {
+  name               = "${var.name_prefix}-alb-controller-irsa"
+  assume_role_policy = data.aws_iam_policy_document.alb_controller_irsa_trust.json
+}
+
+resource "aws_iam_policy" "alb_contoroller" {
+  name   = "${var.name_prefix}-alb-controller-policy"
+  policy = file("${path.module}/alb-controller-policy.json")
+}
+
+resource "aws_iam_role_policy_attachment" "alb_controller_irsa" {
+  role       = aws_iam_role.alb_controller_irsa.name
+  policy_arn = aws_iam_policy.alb_contoroller.arn
+}

@@ -1,0 +1,12 @@
+operator:
+  watchNamespace: events-api
+
+  # The chart's own default request (500m/200Mi) is roughly 12x the
+  # operator's real observed memory usage (16Mi, confirmed live via
+  # `kubectl top pod` during the Milestone 9 session) — a meaningful,
+  # avoidable chunk of a genuinely tight 4-node fleet reserved for a
+  # lightweight controller.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi

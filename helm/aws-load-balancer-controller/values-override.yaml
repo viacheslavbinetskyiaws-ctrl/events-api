@@ -1,0 +1,33 @@
+clusterName: events-api-eks
+
+serviceAccount:
+  create: false
+  name: aws-load-balancer-controller
+
+replicaCount: 1
+
+# Bypasses the controller's IMDS-based VPC/region auto-detection entirely.
+# EKS-managed node groups default to an IMDS HttpPutResponseHopLimit of 1,
+# which blocks IMDSv2 calls from inside a pod (one extra network hop than a
+# host-level call) — the controller crash-loops on startup without this.
+# Documented as the standard alternative to raising the node's IMDS hop
+# limit (which would mean a disruptive rolling replacement of all 4 nodes
+# for a fix scoped to one controller). vpcTags.Name is a Terraform-managed,
+# deterministic tag (${var.name_prefix}-vpc in modules/networking/main.tf),
+# so this stays correct across every destroy/recreate cycle without
+# hardcoding a VPC ID that changes every time.
+region: eu-central-1
+vpcTags:
+  Name: events-api-vpc
+
+# The chart leaves this completely unbounded (resources: {}) if unset,
+# which would silently defeat the memory-accounting discipline the rest of
+# this project's pods depend on. Based on real observed usage (~39Mi),
+# confirmed live during the Milestone 9 session.
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

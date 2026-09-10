@@ -1003,8 +1003,10 @@ helm repo update
 helm install community-operator mongodb/community-operator \
   --version 0.13.0 \
   --namespace events-api \
-  --set operator.watchNamespace=events-api
+  -f helm/mongodb-community-operator/values-override.yaml
 ```
+
+**Update (Milestone 9 session, 2026-09-10)**: added `helm/mongodb-community-operator/values-override.yaml` — follows this project's own established convention (`helm/bitnami-postgres/values-override.yaml`, `helm/metrics-server/values-override.yaml`) — after finding the chart's own default request (`500m`/`200Mi`) is roughly 12x the operator's real observed memory usage (16Mi, confirmed live via `kubectl top pod`), a meaningful, avoidable chunk of a genuinely tight 4-node fleet reserved for a lightweight controller. A fresh install using this command now gets the corrected value from the start, not just this one session's live `helm upgrade`.
 
 - [ ] **Step 2: Verify**
 

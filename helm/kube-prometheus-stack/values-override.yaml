@@ -28,6 +28,7 @@ prometheus:
         value: kafka-connect
         effect: NoSchedule
     retention: 6h
+    replicas: 0
     resources:
       requests:
         cpu: 100m
@@ -36,7 +37,17 @@ prometheus:
         cpu: 500m
         memory: 512Mi
 
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
 grafana:
+  replicas: 0
   tolerations:
     - key: dedicated
       operator: Equal
