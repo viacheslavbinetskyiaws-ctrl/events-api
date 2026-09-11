@@ -385,10 +385,13 @@ resource "aws_iam_role_policy_attachment" "ecr_push" {
 }
 
 # --- terraform_apply role ---
+# Uses github_trust_environment, not github_trust — this job declares
+# environment: aws-infra, which changes the OIDC sub claim shape entirely
+# (see the eighth real-bugs note below).
 
 resource "aws_iam_role" "terraform_apply" {
   name               = "${var.name_prefix}-terraform-apply"
-  assume_role_policy = data.aws_iam_policy_document.github_trust.json
+  assume_role_policy = data.aws_iam_policy_document.github_trust_environment.json
 }
 
 resource "aws_iam_role_policy_attachment" "terraform_apply" {
@@ -819,6 +822,26 @@ declaration in `variables.tf`) — zero changes needed to any `.tf` file, and
 `plan` doesn't get an Environment-scoped secret's usual gate to hide
 behind, so the same secret has to live at the repo level for `plan`
 (no `environment:`) to see it at all, not just `apply`.
+
+**An eighth real bug, found only when `apply` was finally triggered for
+real via `workflow_dispatch`**: `terraform_apply` also failed
+`AssumeRoleWithWebIdentity`, despite sharing the already-fixed
+`github_trust` sub condition with `deploy` — a role that had *already*
+succeeded via `workflow_dispatch` in Task 11. The difference: `apply`'s job
+declares `environment: aws-infra` (kept solely for the deployment-history
+audit trail), and GitHub's docs confirm a job that references an
+environment gets a **completely different** `sub` claim shape —
+`repo:OWNER@ID/REPO@ID:environment:NAME`, not the ref-based shape any
+non-environment job gets. `deploy` never had this problem specifically
+because it deliberately has no `environment:` reference. Fixed with a
+third, distinct trust policy document (`github_trust_environment`), used
+only by `terraform_apply`; `ecr_push`/`deploy` keep sharing the original
+`github_trust` unchanged. Applied as a 1-resource in-place update
+(`terraform_apply`'s trust policy only). This is the same lesson as the
+`pull_request` bug (bug four) generalized one level further: **every
+distinct GitHub Actions trigger/context combination gets its own `sub`
+claim shape**, and none of them should be assumed from another without
+checking GitHub's own docs for that exact combination.
 
 ### 8. Manual, one-time GitHub-side setup (not Terraform)
 

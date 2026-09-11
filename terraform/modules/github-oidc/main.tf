@@ -32,6 +32,34 @@ data "aws_iam_policy_document" "github_trust" {
   }
 }
 
+# Separate trust policy for terraform_apply — its job references
+# environment: aws-infra, which changes the OIDC sub claim shape entirely
+# (repo:OWNER@ID/REPO@ID:environment:NAME), not the ref-based shape
+# ecr_push/deploy get, since neither of those jobs references an
+# environment.
+data "aws_iam_policy_document" "github_trust_environment" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:environment:aws-infra"]
+    }
+  }
+}
+
 # Separate trust policy for the read-only plan role — pull_request's sub
 # claim is branch-agnostic (repo:OWNER@ID/REPO@ID:pull_request, no ref),
 # so this must never be shared with a role that holds write access.
@@ -144,7 +172,7 @@ resource "aws_iam_role_policy_attachment" "ecr_push" {
 
 resource "aws_iam_role" "terraform_apply" {
   name               = "${var.name_prefix}-terraform-apply"
-  assume_role_policy = data.aws_iam_policy_document.github_trust.json
+  assume_role_policy = data.aws_iam_policy_document.github_trust_environment.json
 }
 
 resource "aws_iam_role_policy_attachment" "terraform_apply" {

@@ -816,8 +816,14 @@ is deliberately gitignored) — fixed with `TF_VAR_budget_notification_email`
 from a new repo **Secret** `BUDGET_NOTIFICATION_EMAIL` (not a Variable —
 matches this value's own `sensitive = true`), set at the job level on both
 `plan` and `apply` since `plan` has no `environment:` to gate an
-Environment-scoped secret behind. Full explanation in the spec's real-bugs
-notes under section 7.
+Environment-scoped secret behind. An eighth bug followed when `apply` was
+finally triggered for real: its job's `environment: aws-infra` reference
+changes the OIDC `sub` claim shape entirely
+(`repo:OWNER@ID/REPO@ID:environment:NAME`, not the ref-based shape
+`deploy` — no `environment:` reference — already proved works in Task 11).
+Fixed with a third, separate trust policy document
+(`github_trust_environment`) used only by `terraform_apply`. Full
+explanation in the spec's real-bugs notes under section 7.
 
 - [ ] **Step 2: Validate YAML syntax locally before pushing**
 
