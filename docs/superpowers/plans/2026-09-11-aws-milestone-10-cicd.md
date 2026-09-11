@@ -763,6 +763,9 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
       - run: |
           cd terraform
           terraform init
@@ -778,6 +781,9 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
       - run: |
           cd terraform
           terraform init

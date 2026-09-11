@@ -711,6 +711,9 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
       - run: |
           cd terraform
           terraform init
@@ -726,6 +729,9 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
       - run: |
           cd terraform
           terraform init
@@ -761,6 +767,19 @@ access in the first place. `terraform_apply` stays scoped to
 `ref:refs/heads/main` only, unchanged. Applied as a 2-resource additive
 change (new role + policy attachment), no changes to the other three
 roles.
+
+**A fifth real bug, found on the very next run after fixing the fourth**:
+once OIDC auth succeeded, `terraform init`/`terraform plan` themselves
+failed with `terraform: command not found` — `ubuntu-latest` runners don't
+ship the Terraform CLI pre-installed (unlike `aws`/`docker`, which are).
+Neither `terraform.yaml` job had ever added a step to install it; this
+project's own local Terraform use throughout every prior milestone masked
+the gap entirely, since a laptop obviously already has it. Fixed with
+`hashicorp/setup-terraform@v4` (verified live via the tags API, same
+discipline as every other action), `terraform_version: "1.15.8"` pinned to
+match this repo's own `required_version = "~> 1.15.8"` in
+`terraform/versions.tf` — deliberately not `latest`, to avoid CI silently
+running a different Terraform version than local dev ever has.
 
 ### 8. Manual, one-time GitHub-side setup (not Terraform)
 
