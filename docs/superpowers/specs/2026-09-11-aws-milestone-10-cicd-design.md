@@ -155,10 +155,14 @@ automatic-on-merge, just manually *triggered* rather than manually
   omitting `thumbprint_list` for EKS's own OIDC provider in
   `modules/eks/main.tf`, for the same underlying reason (a trusted-CA-backed
   issuer).
-- **Current major versions of every GitHub Action used, verified live
-  2026-09-11** (not memory): `actions/checkout@v7`, `astral-sh/setup-uv@v10.1.0`,
-  `docker/setup-buildx-action@v4`, `docker/build-push-action@v7`,
-  `aws-actions/configure-aws-credentials@v6`,
+- **Current major versions of every GitHub Action used, re-verified live
+  2026-09-11 directly via the GitHub tags API** (not a summarized fetch,
+  and not memory — a summarized WebFetch of `astral-sh/setup-uv`'s tags
+  page had incorrectly claimed a floating `v10` tag existed; the direct API
+  call caught it): `actions/checkout@v7`, `astral-sh/setup-uv@v10.1.0`
+  (exact version, no floating major tag exists for this action),
+  `docker/setup-qemu-action@v4`, `docker/setup-buildx-action@v4`,
+  `docker/build-push-action@v7`, `aws-actions/configure-aws-credentials@v6`,
   `aws-actions/amazon-ecr-login@v2`.
 
 ## Decisions made this session
@@ -249,10 +253,18 @@ automatic-on-merge, just manually *triggered* rather than manually
 # variables.tf
 variable "name_prefix"          { type = string }
 variable "github_owner"         { type = string }
+variable "github_owner_id"      { type = string }
 variable "github_repo"          { type = string }
+variable "github_repo_id"       { type = string }
 variable "ecr_repository_arns"  { type = list(string) }
 variable "eks_cluster_arn"      { type = string }
 ```
+
+`github_owner_id`/`github_repo_id` (real values `327975409`/`1366376677`)
+weren't in this design's first pass — added once implementation hit
+GitHub's "immutable subject claims" rollout (repos created after
+2026-07-15 get numeric IDs baked into the `sub` claim); see the real-bugs
+note after the workflow files below.
 
 ```hcl
 # main.tf
@@ -283,7 +295,7 @@ data "aws_iam_policy_document" "github_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_owner}/${var.github_repo}:ref:refs/heads/main"]
+      values   = ["repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:ref:refs/heads/main"]
     }
   }
 }
@@ -414,9 +426,11 @@ New module block:
 module "github_oidc" {
   source = "./modules/github-oidc"
 
-  name_prefix   = "events-api-github"
-  github_owner  = "viacheslavbinetskyiaws-ctrl"
-  github_repo   = "events-api"
+  name_prefix     = "events-api-github"
+  github_owner    = "viacheslavbinetskyiaws-ctrl"
+  github_owner_id = "327975409"
+  github_repo     = "events-api"
+  github_repo_id  = "1366376677"
   eks_cluster_arn = module.eks.cluster_arn
 
   ecr_repository_arns = [
@@ -529,29 +543,34 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr
+      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-app:${{ github.sha }}
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime-streaming
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-streaming:${{ github.sha }}
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime-dbt
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-dbt:${{ github.sha }}
       - uses: docker/build-push-action@v7
         with:
           context: ./realtime
           target: runtime
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-realtime:${{ github.sha }}
 
@@ -579,6 +598,46 @@ jobs:
 Note the `test` job's `if:` guard — `workflow_dispatch` only ever exists to
 run `deploy`, so it skips `test`/`build-push` entirely rather than trying to
 run a no-op test pass first.
+
+**Two real bugs found live during implementation, not caught by any review
+before running the actual pipeline:**
+
+1. **`astral-sh/setup-uv@v10` doesn't exist** — unlike most GitHub Actions
+   used here, `astral-sh/setup-uv` publishes only exact version tags
+   (`v10.1.0`, `v10.0.1`, ...), no floating major-version alias. A prior
+   WebFetch-based check claimed `v10` was valid; re-verified directly via
+   the GitHub tags API (not a summarized fetch) after the first CI run
+   failed with `Unable to resolve action`. Fixed: `astral-sh/setup-uv@v10.1.0`.
+   Every other action's floating major tag was re-verified the same way
+   afterward and confirmed correct.
+2. **GitHub's "immutable subject claims" for OIDC `sub`, rolled out for
+   repos created after 2026-07-15** (announced 2026-04-23) — genuinely
+   newer than what this session's earlier doc check surfaced. Since
+   `events-api` was created today, GitHub issues `sub` claims in the form
+   `repo:OWNER@OWNER_ID/REPO@REPO_ID:ref:refs/heads/main`, not the plain
+   `repo:OWNER/REPO:ref:refs/heads/main` every trust policy in this design
+   originally used — causing every `AssumeRoleWithWebIdentity` call to fail
+   with `Not authorized`, for all three roles, since they share the same
+   trust policy document. Fixed with two new module variables
+   (`github_owner_id`, `github_repo_id`, real values `327975409` and
+   `1366376677`, fetched via `curl api.github.com/repos/...`) interpolated
+   into the `sub` condition; applied as a 3-resource in-place update, no
+   replacement.
+
+**A third real bug, found only once an actual `deploy` run tried to update
+the live cluster**: `no match for platform in manifest: not found` —
+`docker/build-push-action` with no `platforms:` input builds for the
+runner's own architecture, which for GitHub-hosted `ubuntu-latest` is
+`linux/amd64`; the EKS node group is `t4g.small` (arm64). This project's
+own Milestone 1 already hit the general shape of this lesson (a locally
+built image happened to be arm64 only because it was built on an Apple
+Silicon Mac) — CI has no such coincidence to rely on. Fixed: added
+`docker/setup-qemu-action@v4` (cross-platform emulation) before
+`setup-buildx-action`, and `platforms: linux/arm64` on all 4
+`build-push-action` steps. The live cluster was never actually down during
+this — the old pod (still on `:latest`) stayed `Running` throughout, since
+Kubernetes doesn't tear down a working ReplicaSet until the new one
+actually becomes `Ready`.
 
 ### 7. `.github/workflows/terraform.yaml`
 

@@ -37,7 +37,8 @@ established, not a new pattern.
 `aws_iam_role`, `aws_eks_access_entry`), GitHub Actions
 (`actions/checkout@v7`, `astral-sh/setup-uv@v10.1.0`,
 `aws-actions/configure-aws-credentials@v6`,
-`aws-actions/amazon-ecr-login@v2`, `docker/setup-buildx-action@v4`,
+`aws-actions/amazon-ecr-login@v2`, `docker/setup-qemu-action@v4`,
+`docker/setup-buildx-action@v4`,
 `docker/build-push-action@v7`), Kubernetes RBAC.
 
 **Spec:** `docs/superpowers/specs/2026-09-11-aws-milestone-10-cicd-design.md`
@@ -130,7 +131,15 @@ variable "github_owner" {
   type = string
 }
 
+variable "github_owner_id" {
+  type = string
+}
+
 variable "github_repo" {
+  type = string
+}
+
+variable "github_repo_id" {
   type = string
 }
 
@@ -175,7 +184,7 @@ data "aws_iam_policy_document" "github_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_owner}/${var.github_repo}:ref:refs/heads/main"]
+      values   = ["repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:ref:refs/heads/main"]
     }
   }
 }
@@ -387,7 +396,9 @@ module "github_oidc" {
 
   name_prefix     = "events-api-github"
   github_owner    = "viacheslavbinetskyiaws-ctrl"
+  github_owner_id = "327975409"
   github_repo     = "events-api"
+  github_repo_id  = "1366376677"
   eks_cluster_arn = module.eks.cluster_arn
 
   ecr_repository_arns = [
@@ -662,29 +673,34 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr
+      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-app:${{ github.sha }}
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime-streaming
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-streaming:${{ github.sha }}
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime-dbt
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-dbt:${{ github.sha }}
       - uses: docker/build-push-action@v7
         with:
           context: ./realtime
           target: runtime
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-realtime:${{ github.sha }}
 

@@ -40,29 +40,34 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr
+      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-app:${{ github.sha }}
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime-streaming
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-streaming:${{ github.sha }}
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime-dbt
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-dbt:${{ github.sha }}
       - uses: docker/build-push-action@v7
         with:
           context: ./realtime
           target: runtime
+          platforms: linux/arm64
           push: true
           tags: ${{ steps.ecr.outputs.registry }}/events-api-realtime:${{ github.sha }}
 
