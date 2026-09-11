@@ -186,14 +186,23 @@ resource "aws_eks_node_group" "kafka_connect" {
 
 data "aws_caller_identity" "current" {}
 
+# Hardcoded to the known human-operator IAM user, not derived from
+# data.aws_caller_identity.current.arn — that resolves to whoever is
+# *currently* authenticated, which broke the moment Terraform started
+# also running via an assumed role (GitHub Actions' OIDC-federated
+# terraform_apply): an assumed-role session ARN
+# (arn:aws:sts::...:assumed-role/.../SessionName) is a different format
+# EKS's access-entry API rejects outright, unlike a plain IAM ARN. Matches
+# the sibling `root` access entry below, which was never dynamically
+# derived in the first place.
 resource "aws_eks_access_entry" "creator" {
   cluster_name  = aws_eks_cluster.this.name
-  principal_arn = data.aws_caller_identity.current.arn
+  principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/terraform-events-api"
 }
 
 resource "aws_eks_access_policy_association" "creator_admin" {
   cluster_name  = aws_eks_cluster.this.name
-  principal_arn = data.aws_caller_identity.current.arn
+  principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/terraform-events-api"
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 
   access_scope {

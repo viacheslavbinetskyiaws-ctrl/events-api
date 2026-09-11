@@ -223,13 +223,21 @@ resource "aws_iam_role_policy_attachment" "dbt_irsa_cloudwatch" {
 # legitimate AWS-authenticated caller." All real authorization for this
 # identity comes from Kubernetes RBAC (see k8s/overlays/aws/viewer-rbac.yaml),
 # not from anything IAM grants it.
+#
+# Trust principal hardcoded to the known human-operator IAM user, not
+# data.aws_caller_identity.current.arn — CI (GitHub Actions' OIDC-federated
+# terraform_apply) has no legitimate reason to ever assume this
+# demo/testing role itself, and deriving it dynamically just meant this
+# trust policy churned every time the identity running Terraform switched
+# between the human operator and CI. Same fix as modules/eks/main.tf's
+# aws_eks_access_entry.creator.
 data "aws_iam_policy_document" "k8s_viewer_trust" {
   statement {
     actions = ["sts:AssumeRole"]
 
     principals {
       type        = "AWS"
-      identifiers = [data.aws_caller_identity.current.arn]
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/terraform-events-api"]
     }
   }
 }
