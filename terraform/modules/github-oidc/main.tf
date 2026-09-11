@@ -72,6 +72,33 @@ resource "aws_iam_role_policy_attachment" "terraform_plan" {
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
+# terraform plan still needs to acquire/release the S3-native state lock
+# (backend.tf's use_lockfile = true) even though it makes no other writes —
+# ReadOnlyAccess alone can't create the .tflock object. Key path matches
+# backend.tf's literal `key = "events-api/terraform.tfstate"` exactly; if
+# that ever changes, this must change with it (backend blocks can't
+# reference variables, so this coupling can't be made a shared value).
+data "aws_iam_policy_document" "terraform_plan_state_lock" {
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
+    resources = ["${var.state_bucket_arn}/events-api/terraform.tfstate.tflock"]
+  }
+}
+
+resource "aws_iam_policy" "terraform_plan_state_lock" {
+  name   = "${var.name_prefix}-terraform-plan-state-lock"
+  policy = data.aws_iam_policy_document.terraform_plan_state_lock.json
+}
+
+resource "aws_iam_role_policy_attachment" "terraform_plan_state_lock" {
+  role       = aws_iam_role.terraform_plan.name
+  policy_arn = aws_iam_policy.terraform_plan_state_lock.arn
+}
+
 # --- ecr_push: builds+pushes the 4 app images on merge to main ---
 
 resource "aws_iam_role" "ecr_push" {

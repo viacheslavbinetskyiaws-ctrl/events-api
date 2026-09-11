@@ -268,6 +268,7 @@ variable "github_repo"          { type = string }
 variable "github_repo_id"       { type = string }
 variable "ecr_repository_arns"  { type = list(string) }
 variable "eks_cluster_arn"      { type = string }
+variable "state_bucket_arn"     { type = string }
 ```
 
 `github_owner_id`/`github_repo_id` (real values `327975409`/`1366376677`)
@@ -780,6 +781,25 @@ discipline as every other action), `terraform_version: "1.15.8"` pinned to
 match this repo's own `required_version = "~> 1.15.8"` in
 `terraform/versions.tf` — deliberately not `latest`, to avoid CI silently
 running a different Terraform version than local dev ever has.
+
+**A sixth real bug, found on the immediate next run after the fifth**:
+OIDC and the Terraform CLI both worked, but `terraform plan` itself failed
+acquiring the S3-native state lock (`backend.tf`'s `use_lockfile = true`):
+`AccessDenied` on `s3:PutObject` for the `.tflock` object. `ReadOnlyAccess`
+is exactly what it says — strictly read-only, with no path to create a
+lock object at all, even though `plan` makes no other writes anywhere.
+`terraform_apply`'s `AdministratorAccess` already covered this implicitly,
+which is why the gap was invisible until `terraform_plan` (a role that
+didn't exist before this same session's fourth bug) actually tried to run.
+Fixed with a narrowly-scoped policy — `GetObject`/`PutObject`/
+`DeleteObject` on exactly the lock object's key, not the bucket — and a new
+`state_bucket_arn` module variable (`"arn:aws:s3:::${module.s3.bucket_id}"`,
+passed from root `main.tf` rather than hardcoded, matching the module's
+existing `eks_cluster_arn` pattern). The lock object's key path
+(`events-api/terraform.tfstate.tflock`) is hardcoded to match
+`backend.tf`'s literal `key` value — an unavoidable coupling, since backend
+blocks can't reference variables at all (a constraint this project already
+documented back in Milestone 0).
 
 ### 8. Manual, one-time GitHub-side setup (not Terraform)
 

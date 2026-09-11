@@ -799,8 +799,14 @@ protection rules), not a gate.
 claim is a completely different, branch-agnostic shape than `push`'s, and
 sharing an `AdministratorAccess`-scoped role with the more-exposed
 automatic trigger was the wrong design regardless. Fixed with a 4th role,
-`terraform_plan` (`ReadOnlyAccess` only). Full explanation in the spec's
-real-bugs note under section 7.
+`terraform_plan` (`ReadOnlyAccess` only). Two more real bugs followed
+immediately: `ubuntu-latest` has no Terraform CLI pre-installed (fixed with
+`hashicorp/setup-terraform@v4`, pinned to `1.15.8` to match
+`terraform/versions.tf`), and `ReadOnlyAccess` alone can't acquire the
+S3-native state lock (`s3:PutObject` denied on the `.tflock` object) — fixed
+with a narrowly-scoped policy on just that object's key, plus a new
+`state_bucket_arn` module variable. Full explanation in the spec's
+real-bugs notes under section 7.
 
 - [ ] **Step 2: Validate YAML syntax locally before pushing**
 

@@ -18,6 +18,10 @@ variable "eks_cluster_arn" {
   type = string
 }
 
+variable "state_bucket_arn" {
+  type = string
+}
+
 variable "github_owner_id" {
   type = string
 }
