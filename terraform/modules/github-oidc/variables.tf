@@ -17,3 +17,10 @@ variable "ecr_repository_arns" {
 variable "eks_cluster_arn" {
   type = string
 }
+
+variable "github_owner_id" {
+  type = string
+}
+variable "github_repo_id" {
+  type = string
+}

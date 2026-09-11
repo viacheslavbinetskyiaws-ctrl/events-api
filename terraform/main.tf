@@ -31,7 +31,9 @@ module "github_oidc" {
 
   name_prefix     = "events-api-github"
   github_owner    = "viacheslavbinetskyiaws-ctrl"
+  github_owner_id = "327975409"
   github_repo     = "events-api"
+  github_repo_id  = "1366376677"
   eks_cluster_arn = module.eks.cluster_arn
 
   ecr_repository_arns = [
