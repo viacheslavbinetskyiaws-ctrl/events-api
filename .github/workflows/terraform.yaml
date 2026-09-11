@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - run: |
           cd terraform

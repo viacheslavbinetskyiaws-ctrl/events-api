@@ -82,3 +82,8 @@ output "github_deploy_role_arn" {
   description = "OIDC-federated role GitHub Actions assumes to deploy to EKS"
   value       = module.github_oidc.deploy_role_arn
 }
+
+output "github_terraform_plan_role_arn" {
+  description = "OIDC-federated, read-only role GitHub Actions assumes to run terraform plan on PRs"
+  value       = module.github_oidc.terraform_plan_role_arn
+}

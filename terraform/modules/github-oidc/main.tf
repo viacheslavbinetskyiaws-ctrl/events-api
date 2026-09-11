@@ -32,6 +32,46 @@ data "aws_iam_policy_document" "github_trust" {
   }
 }
 
+# Separate trust policy for the read-only plan role — pull_request's sub
+# claim is branch-agnostic (repo:OWNER@ID/REPO@ID:pull_request, no ref),
+# so this must never be shared with a role that holds write access.
+data "aws_iam_policy_document" "github_trust_pull_request" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:pull_request"]
+    }
+  }
+}
+
+# --- terraform_plan: runs `terraform plan` on every PR touching terraform/ ---
+# ReadOnlyAccess only — plan never needs write access, and pull_request's
+# branch-agnostic sub claim means this is the more exposed trigger of the two.
+
+resource "aws_iam_role" "terraform_plan" {
+  name               = "${var.name_prefix}-terraform-plan"
+  assume_role_policy = data.aws_iam_policy_document.github_trust_pull_request.json
+}
+
+resource "aws_iam_role_policy_attachment" "terraform_plan" {
+  role       = aws_iam_role.terraform_plan.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+
 # --- ecr_push: builds+pushes the 4 app images on merge to main ---
 
 resource "aws_iam_role" "ecr_push" {

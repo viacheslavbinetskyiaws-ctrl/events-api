@@ -182,14 +182,21 @@ automatic-on-merge, just manually *triggered* rather than manually
   Applies even to the manually-triggered deploy job — `workflow_dispatch`
   still resolves against whichever ref you pick when triggering it, so this
   means you can only actually run the deploy job against `main`.
-- **Three dedicated, purpose-scoped OIDC-federated IAM roles**, not the
-  existing `terraform-events-api` admin user's static credentials and not
-  one shared role:
+- **Four dedicated, purpose-scoped OIDC-federated IAM roles** (originally
+  three — `terraform_plan` was added mid-implementation, see the real-bugs
+  note below), not the existing `terraform-events-api` admin user's static
+  credentials and not one shared role:
   - `ecr_push`: `ecr:GetAuthorizationToken` (`Resource: "*"`, required — a
     token-vending action) + push-related actions
     (`BatchCheckLayerAvailability`/`InitiateLayerUpload`/`UploadLayerPart`/
     `CompleteLayerUpload`/`PutImage`/`BatchGetImage`) scoped to exactly the
-    4 relevant repo ARNs.
+    4 relevant repo ARNs. Trusted only for the `ref:refs/heads/main`-shaped
+    `sub` claim (only ever assumed by `build-push`, a push-to-`main` job).
+  - `terraform_plan`: AWS-managed `ReadOnlyAccess` — trusted only for the
+    `pull_request`-shaped `sub` claim, which is branch-agnostic by design
+    (no `ref` at all). Deliberately never shares a trust policy with any
+    write-capable role, since this is the more exposed trigger of the two
+    Terraform-related roles.
   - `terraform_apply`: `AdministratorAccess` (AWS-managed policy) — matches
     this project's own already-accepted precedent (Milestone 2's security
     review left both `terraform-events-api` and `root` holding
@@ -197,14 +204,17 @@ automatic-on-merge, just manually *triggered* rather than manually
     account, already holds unbounded power regardless"). A genuine
     least-privilege Terraform policy covering this project's full resource
     footprint (VPC/EKS/RDS/IAM/S3/ECR/budgets) is a separate, substantial
-    exercise outside this milestone's point.
+    exercise outside this milestone's point. Trusted only for the
+    `ref:refs/heads/main`-shaped `sub` claim (only ever assumed by `apply`,
+    manually `workflow_dispatch`-triggered).
   - `deploy`: **zero AWS-managed permissions** beyond
     `eks:DescribeCluster` scoped to the one cluster ARN (needed for `aws eks
     update-kubeconfig` to resolve the endpoint/CA data) — all real authority
     comes from a new Kubernetes `Role`/`RoleBinding`, scoped to `get`/`patch`
     on exactly the `events-api` and `realtime` Deployments, nothing else.
-    Mirrors `k8s_viewer`'s existing pattern exactly.
-- **All three roles + the GitHub OIDC provider live in a new, standalone
+    Mirrors `k8s_viewer`'s existing pattern exactly. Trusted only for the
+    `ref:refs/heads/main`-shaped `sub` claim.
+- **All four roles + the GitHub OIDC provider live in a new, standalone
   `terraform/modules/github-oidc/`** — not `modules/iam/`, since that
   module's existing resources all depend on `module.eks.oidc_provider_arn`/
   `.oidc_provider_url` (EKS's own OIDC issuer), a real coupling GitHub's
@@ -300,6 +310,43 @@ data "aws_iam_policy_document" "github_trust" {
   }
 }
 
+# Separate trust policy for the read-only plan role — pull_request's sub
+# claim is branch-agnostic (repo:OWNER@ID/REPO@ID:pull_request, no ref),
+# so this must never be shared with a role that holds write access.
+data "aws_iam_policy_document" "github_trust_pull_request" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:pull_request"]
+    }
+  }
+}
+
+# --- terraform_plan: read-only, runs `terraform plan` on every PR ---
+resource "aws_iam_role" "terraform_plan" {
+  name               = "${var.name_prefix}-terraform-plan"
+  assume_role_policy = data.aws_iam_policy_document.github_trust_pull_request.json
+}
+
+resource "aws_iam_role_policy_attachment" "terraform_plan" {
+  role       = aws_iam_role.terraform_plan.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+
 # --- ecr_push role ---
 
 resource "aws_iam_role" "ecr_push" {
@@ -379,9 +426,10 @@ resource "aws_iam_role_policy_attachment" "deploy_describe_cluster" {
 
 ```hcl
 # outputs.tf
-output "ecr_push_role_arn"       { value = aws_iam_role.ecr_push.arn }
+output "ecr_push_role_arn"        { value = aws_iam_role.ecr_push.arn }
+output "terraform_plan_role_arn"  { value = aws_iam_role.terraform_plan.arn }
 output "terraform_apply_role_arn" { value = aws_iam_role.terraform_apply.arn }
-output "deploy_role_arn"         { value = aws_iam_role.deploy.arn }
+output "deploy_role_arn"          { value = aws_iam_role.deploy.arn }
 ```
 
 ### 2. `terraform/modules/ecr/outputs.tf` — add `repository_arns`
@@ -661,7 +709,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - run: |
           cd terraform
@@ -692,6 +740,28 @@ GitHub's web UI with zero protection rules configured (no required
 reviewers — that turned out to be unusable on a solo repo, see the Context
 section), not by this workflow file.
 
+**A fourth real bug, found only once Task 12's own verification actually
+opened a PR**: `plan`'s first run failed with the identical `Not authorized
+to perform sts:AssumeRoleWithWebIdentity` error as the earlier build-push
+bug — but a different root cause. `pull_request`'s OIDC `sub` claim has a
+completely different, **branch-agnostic** shape:
+`repo:OWNER@ID/REPO@ID:pull_request` (no `ref` at all — confirmed directly
+against GitHub's current OIDC docs), which the original `terraform_apply`
+trust policy (scoped only to `ref:refs/heads/main`) could never match,
+regardless of the immutable-claims fix. Worse than a simple trust-policy
+gap, though: `plan` had been reusing `terraform_apply`'s `AdministratorAccess`
+role from the start — meaning the *more exposed* trigger (`pull_request`,
+automatic, and branch-agnostic enough that GitHub's own docs don't fully
+rule out fork-triggered runs receiving a token) would have ended up
+holding the *more dangerous* permission, had the trust policy simply been
+widened to match instead of properly separated. Real fix: a fourth role,
+`terraform_plan`, `ReadOnlyAccess` only, trusted exclusively for the
+`pull_request`-shaped `sub` claim — `terraform plan` never needed write
+access in the first place. `terraform_apply` stays scoped to
+`ref:refs/heads/main` only, unchanged. Applied as a 2-resource additive
+change (new role + policy attachment), no changes to the other three
+roles.
+
 ### 8. Manual, one-time GitHub-side setup (not Terraform)
 
 - Create the public repo `events-api` under `viacheslavbinetskyiaws-ctrl`
@@ -712,14 +782,17 @@ section), not by this workflow file.
   Context); this Environment exists purely so `apply` runs show up in its
   deployment-history audit trail.
 - After the first `terraform apply` (of `module.github_oidc` + the new
-  `module.eks` access entry) creates the three role ARNs, set repo
-  Variables (Settings → Secrets and variables → Actions → Variables — not
-  Secrets, since none of these values are sensitive, same reasoning this
-  repo already applies to hardcoding the account ID directly into
+  `module.eks` access entry) creates the role ARNs, set repo Variables
+  (Settings → Secrets and variables → Actions → Variables — not Secrets,
+  since none of these values are sensitive, same reasoning this repo
+  already applies to hardcoding the account ID directly into
   `k8s/overlays/aws/*.yaml`): `AWS_ECR_PUSH_ROLE_ARN`,
-  `AWS_DEPLOY_ROLE_ARN`, `AWS_TERRAFORM_APPLY_ROLE_ARN`, `AWS_REGION`
-  (`eu-central-1`), `EKS_CLUSTER_NAME` (`events-api-eks`), `ECR_REGISTRY`
-  (`938500344309.dkr.ecr.eu-central-1.amazonaws.com`).
+  `AWS_DEPLOY_ROLE_ARN`, `AWS_TERRAFORM_PLAN_ROLE_ARN`,
+  `AWS_TERRAFORM_APPLY_ROLE_ARN`, `AWS_REGION` (`eu-central-1`),
+  `EKS_CLUSTER_NAME` (`events-api-eks`), `ECR_REGISTRY`
+  (`938500344309.dkr.ecr.eu-central-1.amazonaws.com`). `terraform_plan`
+  was added mid-implementation (see the real-bugs note below) — if you set
+  up Variables before that point, come back and add this one.
 
 There's a real bootstrap ordering wrinkle here: `module.github_oidc`'s trust
 policy references `repo:viacheslavbinetskyiaws-ctrl/events-api:...`, so the

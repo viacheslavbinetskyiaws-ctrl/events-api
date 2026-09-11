@@ -616,6 +616,7 @@ hardcoding the account ID directly into `k8s/overlays/aws/*.yaml`). Add:
 |---|---|
 | `AWS_ECR_PUSH_ROLE_ARN` | (Task 4 Step 6 output) |
 | `AWS_DEPLOY_ROLE_ARN` | (Task 4 Step 6 output) |
+| `AWS_TERRAFORM_PLAN_ROLE_ARN` | (added mid-implementation, Task 12 — see spec's real-bugs note; `arn:aws:iam::938500344309:role/events-api-github-terraform-plan`) |
 | `AWS_TERRAFORM_APPLY_ROLE_ARN` | (Task 4 Step 6 output) |
 | `AWS_REGION` | `eu-central-1` |
 | `EKS_CLUSTER_NAME` | `events-api-eks` |
@@ -760,7 +761,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - run: |
           cd terraform
@@ -786,6 +787,14 @@ jobs:
 `apply` only runs when manually triggered — `environment: aws-infra` here
 is for the deployment-history audit trail only (Task 6 created it with no
 protection rules), not a gate.
+
+**Note added mid-implementation**: `plan` originally reused
+`AWS_TERRAFORM_APPLY_ROLE_ARN`, which failed — `pull_request`'s OIDC `sub`
+claim is a completely different, branch-agnostic shape than `push`'s, and
+sharing an `AdministratorAccess`-scoped role with the more-exposed
+automatic trigger was the wrong design regardless. Fixed with a 4th role,
+`terraform_plan` (`ReadOnlyAccess` only). Full explanation in the spec's
+real-bugs note under section 7.
 
 - [ ] **Step 2: Validate YAML syntax locally before pushing**
 
