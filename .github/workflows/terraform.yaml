@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
+      TF_VAR_use_locastack: "false"
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
@@ -35,6 +36,7 @@ jobs:
     environment: aws-infra
     env:
       TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
+      TF_VAR_use_locastack: "false"
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
