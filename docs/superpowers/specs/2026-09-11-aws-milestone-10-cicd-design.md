@@ -156,7 +156,7 @@ automatic-on-merge, just manually *triggered* rather than manually
   `modules/eks/main.tf`, for the same underlying reason (a trusted-CA-backed
   issuer).
 - **Current major versions of every GitHub Action used, verified live
-  2026-09-11** (not memory): `actions/checkout@v7`, `astral-sh/setup-uv@v10`,
+  2026-09-11** (not memory): `actions/checkout@v7`, `astral-sh/setup-uv@v10.1.0`,
   `docker/setup-buildx-action@v4`, `docker/build-push-action@v7`,
   `aws-actions/configure-aws-credentials@v6`,
   `aws-actions/amazon-ecr-login@v2`.
@@ -509,7 +509,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
       - run: uv sync
       - run: docker compose up -d --wait postgres
       - run: uv run pytest

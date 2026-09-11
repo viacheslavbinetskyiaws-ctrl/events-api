@@ -35,7 +35,7 @@ established, not a new pattern.
 
 **Tech Stack:** Terraform (`aws_iam_openid_connect_provider`,
 `aws_iam_role`, `aws_eks_access_entry`), GitHub Actions
-(`actions/checkout@v7`, `astral-sh/setup-uv@v10`,
+(`actions/checkout@v7`, `astral-sh/setup-uv@v10.1.0`,
 `aws-actions/configure-aws-credentials@v6`,
 `aws-actions/amazon-ecr-login@v2`, `docker/setup-buildx-action@v4`,
 `docker/build-push-action@v7`), Kubernetes RBAC.
@@ -642,7 +642,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
       - run: uv sync
       - run: docker compose up -d --wait postgres
       - run: uv run pytest
