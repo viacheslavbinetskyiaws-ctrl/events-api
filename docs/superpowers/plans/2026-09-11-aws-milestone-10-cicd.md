@@ -616,6 +616,7 @@ hardcoding the account ID directly into `k8s/overlays/aws/*.yaml`). Add:
 |---|---|
 | `AWS_ECR_PUSH_ROLE_ARN` | (Task 4 Step 6 output) |
 | `AWS_DEPLOY_ROLE_ARN` | (Task 4 Step 6 output) |
+| `AWS_TERRAFORM_PLAN_ROLE_ARN` | (added mid-implementation, Task 12 — see spec's real-bugs note; `arn:aws:iam::938500344309:role/events-api-github-terraform-plan`) |
 | `AWS_TERRAFORM_APPLY_ROLE_ARN` | (Task 4 Step 6 output) |
 | `AWS_REGION` | `eu-central-1` |
 | `EKS_CLUSTER_NAME` | `events-api-eks` |
@@ -756,12 +757,17 @@ jobs:
   plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    env:
+      TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
       - run: |
           cd terraform
           terraform init
@@ -771,12 +777,17 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: aws-infra
+    env:
+      TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
       - run: |
           cd terraform
           terraform init
@@ -786,6 +797,27 @@ jobs:
 `apply` only runs when manually triggered — `environment: aws-infra` here
 is for the deployment-history audit trail only (Task 6 created it with no
 protection rules), not a gate.
+
+**Note added mid-implementation**: `plan` originally reused
+`AWS_TERRAFORM_APPLY_ROLE_ARN`, which failed — `pull_request`'s OIDC `sub`
+claim is a completely different, branch-agnostic shape than `push`'s, and
+sharing an `AdministratorAccess`-scoped role with the more-exposed
+automatic trigger was the wrong design regardless. Fixed with a 4th role,
+`terraform_plan` (`ReadOnlyAccess` only). Two more real bugs followed
+immediately: `ubuntu-latest` has no Terraform CLI pre-installed (fixed with
+`hashicorp/setup-terraform@v4`, pinned to `1.15.8` to match
+`terraform/versions.tf`), and `ReadOnlyAccess` alone can't acquire the
+S3-native state lock (`s3:PutObject` denied on the `.tflock` object) — fixed
+with a narrowly-scoped policy on just that object's key, plus a new
+`state_bucket_arn` module variable. A seventh bug followed immediately:
+`terraform plan` hung on an interactive prompt for
+`var.budget_notification_email` (this repo's `.tfvars` supplying it locally
+is deliberately gitignored) — fixed with `TF_VAR_budget_notification_email`
+from a new repo **Secret** `BUDGET_NOTIFICATION_EMAIL` (not a Variable —
+matches this value's own `sensitive = true`), set at the job level on both
+`plan` and `apply` since `plan` has no `environment:` to gate an
+Environment-scoped secret behind. Full explanation in the spec's real-bugs
+notes under section 7.
 
 - [ ] **Step 2: Validate YAML syntax locally before pushing**
 

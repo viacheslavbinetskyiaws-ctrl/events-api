@@ -32,6 +32,73 @@ data "aws_iam_policy_document" "github_trust" {
   }
 }
 
+# Separate trust policy for the read-only plan role — pull_request's sub
+# claim is branch-agnostic (repo:OWNER@ID/REPO@ID:pull_request, no ref),
+# so this must never be shared with a role that holds write access.
+data "aws_iam_policy_document" "github_trust_pull_request" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:pull_request"]
+    }
+  }
+}
+
+# --- terraform_plan: runs `terraform plan` on every PR touching terraform/ ---
+# ReadOnlyAccess only — plan never needs write access, and pull_request's
+# branch-agnostic sub claim means this is the more exposed trigger of the two.
+
+resource "aws_iam_role" "terraform_plan" {
+  name               = "${var.name_prefix}-terraform-plan"
+  assume_role_policy = data.aws_iam_policy_document.github_trust_pull_request.json
+}
+
+resource "aws_iam_role_policy_attachment" "terraform_plan" {
+  role       = aws_iam_role.terraform_plan.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+
+# terraform plan still needs to acquire/release the S3-native state lock
+# (backend.tf's use_lockfile = true) even though it makes no other writes —
+# ReadOnlyAccess alone can't create the .tflock object. Key path matches
+# backend.tf's literal `key = "events-api/terraform.tfstate"` exactly; if
+# that ever changes, this must change with it (backend blocks can't
+# reference variables, so this coupling can't be made a shared value).
+data "aws_iam_policy_document" "terraform_plan_state_lock" {
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
+    resources = ["${var.state_bucket_arn}/events-api/terraform.tfstate.tflock"]
+  }
+}
+
+resource "aws_iam_policy" "terraform_plan_state_lock" {
+  name   = "${var.name_prefix}-terraform-plan-state-lock"
+  policy = data.aws_iam_policy_document.terraform_plan_state_lock.json
+}
+
+resource "aws_iam_role_policy_attachment" "terraform_plan_state_lock" {
+  role       = aws_iam_role.terraform_plan.name
+  policy_arn = aws_iam_policy.terraform_plan_state_lock.arn
+}
+
 # --- ecr_push: builds+pushes the 4 app images on merge to main ---
 
 resource "aws_iam_role" "ecr_push" {
