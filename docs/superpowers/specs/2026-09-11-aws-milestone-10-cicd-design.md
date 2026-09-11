@@ -706,6 +706,8 @@ jobs:
   plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    env:
+      TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
@@ -724,6 +726,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: aws-infra
+    env:
+      TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
@@ -801,6 +805,21 @@ existing `eks_cluster_arn` pattern). The lock object's key path
 blocks can't reference variables at all (a constraint this project already
 documented back in Milestone 0).
 
+**A seventh real bug, on the run right after the sixth**: `terraform plan`
+hung indefinitely, stuck on an interactive prompt for
+`var.budget_notification_email` — this repo's `terraform/terraform.tfvars`
+(gitignored, holds a real personal email, deliberately never committed)
+supplies it locally, but CI checks out no such file and sets no equivalent
+env var, so Terraform fell back to prompting — which a non-interactive CI
+runner can never answer, hanging until the job's 6-hour default timeout.
+Cancelled the stuck run manually rather than waiting it out. Fixed the
+idiomatic way: `TF_VAR_budget_notification_email` set from a new GitHub
+**Secret** (not a Variable, matching this value's own `sensitive = true`
+declaration in `variables.tf`) — zero changes needed to any `.tf` file, and
+`plan` doesn't get an Environment-scoped secret's usual gate to hide
+behind, so the same secret has to live at the repo level for `plan`
+(no `environment:`) to see it at all, not just `apply`.
+
 ### 8. Manual, one-time GitHub-side setup (not Terraform)
 
 - Create the public repo `events-api` under `viacheslavbinetskyiaws-ctrl`
@@ -832,6 +851,10 @@ documented back in Milestone 0).
   (`938500344309.dkr.ecr.eu-central-1.amazonaws.com`). `terraform_plan`
   was added mid-implementation (see the real-bugs note below) — if you set
   up Variables before that point, come back and add this one.
+- Also set one repo **Secret** (Settings → Secrets and variables → Actions →
+  Secrets tab — deliberately not a Variable, matching `variables.tf`'s own
+  `sensitive = true` on this value): `BUDGET_NOTIFICATION_EMAIL`, your real
+  email. Added mid-implementation too — see the seventh real-bugs note.
 
 There's a real bootstrap ordering wrinkle here: `module.github_oidc`'s trust
 policy references `repo:viacheslavbinetskyiaws-ctrl/events-api:...`, so the

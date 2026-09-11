@@ -757,6 +757,8 @@ jobs:
   plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    env:
+      TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
@@ -775,6 +777,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: aws-infra
+    env:
+      TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6
@@ -805,8 +809,15 @@ immediately: `ubuntu-latest` has no Terraform CLI pre-installed (fixed with
 `terraform/versions.tf`), and `ReadOnlyAccess` alone can't acquire the
 S3-native state lock (`s3:PutObject` denied on the `.tflock` object) — fixed
 with a narrowly-scoped policy on just that object's key, plus a new
-`state_bucket_arn` module variable. Full explanation in the spec's
-real-bugs notes under section 7.
+`state_bucket_arn` module variable. A seventh bug followed immediately:
+`terraform plan` hung on an interactive prompt for
+`var.budget_notification_email` (this repo's `.tfvars` supplying it locally
+is deliberately gitignored) — fixed with `TF_VAR_budget_notification_email`
+from a new repo **Secret** `BUDGET_NOTIFICATION_EMAIL` (not a Variable —
+matches this value's own `sensitive = true`), set at the job level on both
+`plan` and `apply` since `plan` has no `environment:` to gate an
+Environment-scoped secret behind. Full explanation in the spec's real-bugs
+notes under section 7.
 
 - [ ] **Step 2: Validate YAML syntax locally before pushing**
 
