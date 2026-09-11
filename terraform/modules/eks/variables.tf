@@ -14,3 +14,7 @@ variable "k8s_viewer_role_arn" {
   type        = string
   description = "IAM role ARN mapped into the cluster via kubernetes_groups, authorized only through hand-written K8s RBAC — no access policy attached"
 }
+
+variable "github_deploy_role_arn" {
+  type = string
+}

@@ -29,20 +29,46 @@ and wants automatic tests but manually-confirmed deploys, for both classes of
 2. **Infrastructure deploys** (Terraform) — a materially different, very
    standard practice (running `terraform apply` from a laptop, which is what
    every milestone in this project has done so far, is the less mature
-   pattern precisely because it lacks the review trail and required-approval
-   gate CI naturally provides). New: `terraform plan` automatic on every PR
-   touching `terraform/**`, `terraform apply` gated behind a GitHub
-   Environment's required-reviewer approval — matching this project's own
-   repeated real-bug history on Terraform applies (wrong instance types,
-   broken trust policies, capacity miscalculations) with an actual human
-   checkpoint before anything mutates real infrastructure, not blind
-   auto-apply on merge.
+   pattern precisely because it lacks the review trail CI naturally
+   provides). New: `terraform plan` automatic on every PR touching
+   `terraform/**`, `terraform apply` triggered manually
+   (`workflow_dispatch`) — matching this project's own repeated real-bug
+   history on Terraform applies (wrong instance types, broken trust
+   policies, capacity miscalculations) with an actual human checkpoint
+   before anything mutates real infrastructure, not blind auto-apply on
+   merge. **Corrected mid-implementation** (originally designed as a GitHub
+   Environment required-reviewer approval gate — see the note below).
 
 Both additions stay inside this milestone's own boundary — full
 auto-deploy-on-merge (GitOps/ArgoCD) is still deferred, documented rather
 than built, for the reason the original plan already gives: it needs an
 always-on cluster to be worth building, which this project doesn't reliably
 have.
+
+**Real platform limitation hit during implementation, corrected on the
+spot**: GitHub Environment "required reviewers" turns out to be unusable on
+a solo-owned repository — the reviewer-search field in the Environment
+settings UI never returns the repo owner's own account as a selectable
+option. This matches GitHub's well-documented "you cannot request yourself
+as a PR reviewer" restriction; the Environment reviewer picker appears to
+inherit the same rule, though no GitHub doc found during this session
+states it explicitly for Environments. Since this is a single-operator
+repo with no second account to add, "required reviewers" has no one to
+require.
+
+Fix: `terraform.yml`'s `apply` job's actual "manually confirmed" property
+now comes entirely from its trigger — `workflow_dispatch`, the same
+manually-invoked shape already designed for `ci.yml`'s `deploy` job — not
+from an approval gate. The `aws-infra` Environment itself is kept, but
+stripped down to zero protection rules (no required reviewers, no wait
+timer); the `apply` job still references `environment: aws-infra` purely
+for the free deployment-history audit trail GitHub tracks per-Environment
+(Settings → Environments → aws-infra shows every real `apply` run, by whom,
+when) — a genuinely useful record for infrastructure changes specifically,
+costing nothing to keep once the gate itself doesn't work. `plan` staying
+automatic on every PR is unaffected either way; `apply` is still never
+automatic-on-merge, just manually *triggered* rather than manually
+*approved*.
 
 ## Real state checked before designing (not assumed)
 
@@ -196,14 +222,16 @@ have.
   curl-verifiable and updating them carries real consumer-offset/schedule
   risk without adding teaching value for "prove CD applies changes."
 - **`terraform.yml`: `plan` automatic on PR** (any PR touching
-  `terraform/**`), **`apply` gated behind a GitHub Environment
-  (`aws-infra`) requiring manual reviewer approval** — confirmed available
-  on this account (public repo, Free plan). Not a second `workflow_dispatch`
-  job — an approval gate on an otherwise-automatic-on-merge trigger is the
-  correct shape here specifically because merging the PR is already the
-  natural trigger point; requiring a separate manual re-trigger on top would
-  just be friction without adding a real checkpoint the approval gate
-  doesn't already provide.
+  `terraform/**`), **`apply` triggered manually via `workflow_dispatch`,
+  still tagged `environment: aws-infra` for its free deployment-history
+  audit trail** — originally designed as an `aws-infra` required-reviewer
+  approval gate, corrected mid-implementation once that turned out to be
+  unusable on a solo-owned repo (see the Context section's note); the
+  Environment itself is kept with zero protection rules, purely for the
+  audit trail, not as the gate. Same manually-triggered shape as `ci.yml`'s
+  `deploy` job now, for the same reason: a trigger you have to consciously
+  invoke already satisfies "manually confirmed" on its own, with no
+  second-party reviewer needed.
 - **No Ansible** — not in the target job posting's named stack (Terraform +
   Kubernetes only), and no technical gap for it either: every place it would
   traditionally fit (server configuration, app rollout) is already owned by
@@ -456,7 +484,7 @@ subjects:
 
 Added to `k8s/overlays/aws/kustomization.yaml`'s `resources:` list.
 
-### 6. `.github/workflows/ci.yml`
+### 6. `.github/workflows/ci.yaml`
 
 ```yaml
 name: CI
@@ -552,7 +580,7 @@ Note the `test` job's `if:` guard — `workflow_dispatch` only ever exists to
 run `deploy`, so it skips `test`/`build-push` entirely rather than trying to
 run a no-op test pass first.
 
-### 7. `.github/workflows/terraform.yml`
+### 7. `.github/workflows/terraform.yaml`
 
 ```yaml
 name: Terraform
@@ -560,9 +588,7 @@ name: Terraform
 on:
   pull_request:
     paths: ["terraform/**"]
-  push:
-    branches: ["main"]
-    paths: ["terraform/**"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -584,7 +610,7 @@ jobs:
           terraform plan
 
   apply:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: aws-infra
     steps:
@@ -599,9 +625,13 @@ jobs:
           terraform apply -auto-approve
 ```
 
-`environment: aws-infra` is what makes `apply` pause for manual approval —
-the Environment itself (with a required reviewer configured) is created in
-GitHub's web UI, not by this workflow file.
+`apply` only ever runs when manually triggered (`workflow_dispatch`) — that
+trigger is what makes it "manually confirmed," not the Environment.
+`environment: aws-infra` is kept purely for GitHub's free per-Environment
+deployment-history audit trail; the Environment itself is created in
+GitHub's web UI with zero protection rules configured (no required
+reviewers — that turned out to be unusable on a solo repo, see the Context
+section), not by this workflow file.
 
 ### 8. Manual, one-time GitHub-side setup (not Terraform)
 
@@ -618,8 +648,10 @@ GitHub's web UI, not by this workflow file.
   git remote add origin git@github-aws-personal:viacheslavbinetskyiaws-ctrl/events-api.git
   git push -u origin main
   ```
-- Create the `aws-infra` Environment (Settings → Environments), add yourself
-  as a required reviewer.
+- Create the `aws-infra` Environment (Settings → Environments) with **no
+  protection rules** — required reviewers isn't usable on a solo repo (see
+  Context); this Environment exists purely so `apply` runs show up in its
+  deployment-history audit trail.
 - After the first `terraform apply` (of `module.github_oidc` + the new
   `module.eks` access entry) creates the three role ARNs, set repo
   Variables (Settings → Secrets and variables → Actions → Variables — not
@@ -661,10 +693,11 @@ over.
    low-risk `terraform/` change (e.g. a comment or an output description) —
    confirm `plan` runs automatically and its output is visible in the job
    log.
-5. **Terraform apply, manually gated**: merge that PR — confirm the `apply`
-   job starts but **pauses** waiting for approval (the `aws-infra`
-   Environment's required-reviewer gate), then actually runs only after
-   clicking approve in the Actions UI.
+5. **Terraform apply, manual**: merge that PR, then manually trigger
+   `terraform.yml`'s `workflow_dispatch` — confirm `apply` only ever runs
+   when explicitly triggered this way (never automatically on the merge
+   itself), and that the run shows up under Settings → Environments →
+   `aws-infra`'s deployment history afterward.
 
 This is `AWS_PLAN.md`'s own Milestone 10 verification bar (steps 1-2) plus
 the two additions this session's scope expansion introduced (steps 3-5).
@@ -697,4 +730,4 @@ From `AWS_PLAN.md`'s own Verification section: "Milestone 10: a push to a
 feature branch runs tests in GitHub Actions; a merge to main results in four
 new image tags actually present in ECR." — extended this session (see
 Verification above) to also cover the manual app-deploy and
-plan/approve/apply Terraform flow.
+plan-automatic/apply-manual Terraform flow.

@@ -1,0 +1,40 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths: ["terraform/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - run: |
+          cd terraform
+          terraform init
+          terraform plan
+
+  apply:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: aws-infra
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - run: |
+          cd terraform
+          terraform init
+          terraform apply -auto-approve

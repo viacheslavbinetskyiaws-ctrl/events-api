@@ -67,3 +67,18 @@ output "alb_controller_role_arn" {
   description = "IRSA role ARN for the AWS Load Balancer Controller's kube-system ServiceAccount"
   value       = module.iam.alb_controller_role_arn
 }
+
+output "github_ecr_push_role_arn" {
+  description = "OIDC-federated role GitHub Actions assumes to push images to ECR"
+  value       = module.github_oidc.ecr_push_role_arn
+}
+
+output "github_terraform_apply_role_arn" {
+  description = "OIDC-federated role GitHub Actions assumes to run terraform apply"
+  value       = module.github_oidc.terraform_apply_role_arn
+}
+
+output "github_deploy_role_arn" {
+  description = "OIDC-federated role GitHub Actions assumes to deploy to EKS"
+  value       = module.github_oidc.deploy_role_arn
+}

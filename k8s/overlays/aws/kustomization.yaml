@@ -9,6 +9,7 @@ resources:
   - viewer-service-account.yaml
   - viewer-rbac.yaml
   - ingress.yaml
+  - deploy-rbac.yaml
 
 patches:
   - path: delete-postgres-deployment.yaml

@@ -1,0 +1,24 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: github-actions-deployer
+  namespace: events-api
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["events-api", "realtime"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-actions-deployer
+  namespace: events-api
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: github-actions-deployer
+subjects:
+  - kind: Group
+    name: github-actions-deployers
+    apiGroup: rbac.authorization.k8s.io

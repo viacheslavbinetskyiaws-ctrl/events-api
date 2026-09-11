@@ -226,6 +226,15 @@ resource "aws_eks_access_entry" "k8s_viewer" {
   kubernetes_groups = ["events-api-viewers"]
 }
 
+# Same shape as k8s_viewer above — no AWS-managed policy fallback,
+# permissions come entirely from k8s/overlays/aws/deploy-rbac.yaml.
+resource "aws_eks_access_entry" "github_deploy" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.github_deploy_role_arn
+
+  kubernetes_groups = ["github-actions-deployers"]
+}
+
 data "aws_iam_policy_document" "ebs_csi_irsa_trust" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]

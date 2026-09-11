@@ -26,14 +26,30 @@ module "ecr" {
   source      = "./modules/ecr"
   name_prefix = "events-api"
 }
+module "github_oidc" {
+  source = "./modules/github-oidc"
+
+  name_prefix     = "events-api-github"
+  github_owner    = "viacheslavbinetskyiaws-ctrl"
+  github_repo     = "events-api"
+  eks_cluster_arn = module.eks.cluster_arn
+
+  ecr_repository_arns = [
+    module.ecr.repository_arns["app"],
+    module.ecr.repository_arns["streaming"],
+    module.ecr.repository_arns["dbt"],
+    module.ecr.repository_arns["realtime"],
+  ]
+}
 
 module "eks" {
   source = "./modules/eks"
 
-  name_prefix         = "events-api"
-  cluster_subnet_ids  = concat(module.networking.subnet_ids, module.networking.private_subnet_ids)
-  node_subnet_ids     = module.networking.private_subnet_ids
-  k8s_viewer_role_arn = module.iam.k8s_viewer_role_arn
+  name_prefix            = "events-api"
+  cluster_subnet_ids     = concat(module.networking.subnet_ids, module.networking.private_subnet_ids)
+  node_subnet_ids        = module.networking.private_subnet_ids
+  k8s_viewer_role_arn    = module.iam.k8s_viewer_role_arn
+  github_deploy_role_arn = module.github_oidc.deploy_role_arn
 }
 
 module "rds" {

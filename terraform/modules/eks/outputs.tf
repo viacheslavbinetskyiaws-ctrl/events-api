@@ -33,3 +33,7 @@ output "kafka_connect_node_role_arn" {
   description = "Node IAM role for the dedicated Kafka Connect node group — this is the AWS identity GCP WIF must trust now, not the old IRSA role"
   value       = aws_iam_role.node_kafka_connect.arn
 }
+
+output "cluster_arn" {
+  value = aws_eks_cluster.this.arn
+}
