@@ -5,10 +5,6 @@ on:
     branches: ["**"]
   pull_request:
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: "Git SHA tag to deploy (from a prior build-push run)"
-        required: true
 
 permissions:
   contents: read
@@ -48,28 +44,36 @@ jobs:
           target: runtime
           platforms: linux/arm64
           push: true
-          tags: ${{ steps.ecr.outputs.registry }}/events-api-app:${{ github.sha }}
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/events-api-app:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/events-api-app:latest
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime-streaming
           platforms: linux/arm64
           push: true
-          tags: ${{ steps.ecr.outputs.registry }}/events-api-streaming:${{ github.sha }}
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/events-api-streaming:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/events-api-streaming:latest
       - uses: docker/build-push-action@v7
         with:
           context: .
           target: runtime-dbt
           platforms: linux/arm64
           push: true
-          tags: ${{ steps.ecr.outputs.registry }}/events-api-dbt:${{ github.sha }}
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/events-api-dbt:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/events-api-dbt:latest
       - uses: docker/build-push-action@v7
         with:
           context: ./realtime
           target: runtime
           platforms: linux/arm64
           push: true
-          tags: ${{ steps.ecr.outputs.registry }}/events-api-realtime:${{ github.sha }}
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/events-api-realtime:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/events-api-realtime:latest
 
   deploy:
     if: github.event_name == 'workflow_dispatch'
@@ -83,10 +87,19 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - run: aws eks update-kubeconfig --name ${{ vars.EKS_CLUSTER_NAME }} --region ${{ vars.AWS_REGION }}
-      - run: |
-          kubectl set image deployment/events-api \
-            events-api=${{ vars.ECR_REGISTRY }}/events-api-app:${{ inputs.image_tag }} \
-            -n events-api
-          kubectl set image deployment/realtime \
-            realtime=${{ vars.ECR_REGISTRY }}/events-api-realtime:${{ inputs.image_tag }} \
-            -n events-api
+      # Manifests permanently reference :latest (see k8s/overlays/aws/
+      # deployment-patch.yaml etc.) — a rollout restart is what forces
+      # Kubernetes to actually re-pull it, since a running pod never
+      # re-pulls on its own just because a new image was pushed to the
+      # same tag. No image_tag input needed: this always deploys whatever
+      # :latest currently is, which is exactly the most recent main-branch
+      # build-push. cdc-consumer included too (same staleness issue, same
+      # idempotent-replay-on-restart guarantee already proven — offsets
+      # only commit after a successful write, and ON CONFLICT DO NOTHING/
+      # upsert-by-id make any re-delivered in-flight message a safe no-op)
+      # so nothing needs a separate manual restart step. No ordering
+      # between the three — none depends on another being ready first,
+      # each just reconnects to its own already-running upstream. The dbt
+      # CronJob needs no restart at all — it creates a fresh pod every
+      # hourly run, which already pulls :latest fresh every time.
+      - run: kubectl rollout restart deployment/events-api deployment/realtime deployment/cdc-consumer -n events-api

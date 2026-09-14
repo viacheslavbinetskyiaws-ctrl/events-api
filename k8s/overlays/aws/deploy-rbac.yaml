@@ -6,7 +6,7 @@ metadata:
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    resourceNames: ["events-api", "realtime"]
+    resourceNames: ["events-api", "realtime", "cdc-consumer"]
     verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

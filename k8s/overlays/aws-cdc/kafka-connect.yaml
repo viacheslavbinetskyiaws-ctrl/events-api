@@ -63,6 +63,14 @@ spec:
       cpu: 500m
       memory: 1Gi
   jvmOptions:
+    # Pinned rather than left to Strimzi's default (75% of the container
+    # memory limit = 744Mi here) — NMT confirmed committed heap, not
+    # thread/native overhead, was the dominant real memory consumer, even
+    # though live heap usage was only ~103Mi. G1GC doesn't give committed
+    # heap back to the OS once claimed, so the auto-computed ceiling was
+    # driving real RSS regardless of actual live-object occupancy.
+    "-Xmx": "384m"
+    "-Xms": "384m"
     "-XX":
       "NativeMemoryTracking": "summary"
     javaSystemProperties:
