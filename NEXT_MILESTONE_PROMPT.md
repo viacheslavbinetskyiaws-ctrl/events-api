@@ -13,12 +13,38 @@ by AWS/Kubernetes' own documentation, so this is destroy/recreate, not a
 config edit.
 
 Before starting, confirm what's actually still live on AWS the same way
-every prior milestone has — EKS/RDS were both still `ACTIVE`/`available` at
-the end of the Milestone 10 session (confirmed via `describe-cluster`/
-`describe-db-instances`, RDS storage still at the pre-shrink `50` GiB), all
-34 pods across all 3 namespaces `Running`/`Completed`, nothing crash-looping
-— but check again rather than trust that a session boundary didn't change
-anything.
+every prior milestone has — EKS/RDS were both still `ACTIVE`/`available` as
+of 2026-09-14 (confirmed via `describe-cluster`/`describe-db-instances`, RDS
+storage still at the pre-shrink `50` GiB), all 34 pods across all 3
+namespaces `Running`/`Completed`, nothing crash-looping — but check again
+rather than trust that a session boundary didn't change anything.
+
+**Real usage numbers, freshly re-verified 2026-09-14 (supersede the stale
+Milestone-5-era figures an earlier draft of this file cited)** — all three
+storage targets confirm the same story, real usage nowhere near even the
+shrunk-to minimums: RDS **~3.5GiB used of 50GiB allocated** (~7%, via
+CloudWatch `FreeStorageSpace`) against a verified `5GiB` real minimum;
+Kafka PVC **92Mi used of 5Gi** (2%); Mongo data-volume **386Mi used of 2Gi**
+(20%); Mongo logs-volume **69Mi used of 1Gi** (8%) — against a verified
+`1Gi` EBS floor for all three. CPU is a non-issue cluster-wide (1-5% node
+utilization; every pod checked uses 3-15% of its own CPU *request* size)
+and — worth remembering rather than re-deriving — **reducing CPU requests
+would not reduce the AWS bill at all**: this project runs fixed-size EC2
+node groups, not Fargate, so AWS bills for the 4 provisioned `t4g.small`
+instances regardless of what pods request; only changing `desired_size`/
+instance type in `terraform/modules/eks/main.tf` would move that number,
+and that's not realistically achievable right now regardless (see next).
+
+**One new finding worth planning around**: node `ip-10-0-11-18` is
+currently at **105% real memory** (pod-level requests sum to 93%, but real
+usage — plus real kubelet/system overhead `kubectl top pods` doesn't
+capture — pushes it over). Nothing is currently crash-looping or evicting,
+but this node has zero real headroom. Since this milestone's Kafka/Mongo
+PVC resize means deleting and recreating those pods (a real restart, not
+just a config reload), check `kubectl top nodes` again fresh at the start
+of the session rather than assume this figure — if it's still tight, expect
+the same class of memory-pressure debugging Milestone 9 already went
+through once, not a surprise.
 
 **This is the first real exercise of the Terraform CI/CD pipeline Milestone
 10 just built — that's the whole reason the user wanted this milestone
@@ -72,10 +98,8 @@ rather than rediscover:**
   unaffected (that hardcoded ARN is exactly the identity local applies
   already authenticate as via the `events-api-tf` profile).
 - RDS `allocated_storage` is still `50` (not yet shrunk — that's this
-  milestone's actual job). Real minimum already verified live last session
-  (`aws rds describe-orderable-db-instance-options`): `5` GiB. Real EBS
-  floor for the PVCs, also already verified (`aws ec2 create-volume
-  --dry-run --size 0`): `1Gi`.
+  milestone's actual job) — see the real-usage numbers already given above,
+  no need to re-derive the verified minimums (`5GiB` RDS, `1Gi` EBS floor).
 - **Real, calculated savings from this whole milestone: roughly $5-6/month**
   (gp2 ≈ $0.119/GB-mo, gp3 ≈ $0.095/GB-mo, both AWS Pricing API-verified) —
   small, not urgent on its own; the actual value here is exercising the new
