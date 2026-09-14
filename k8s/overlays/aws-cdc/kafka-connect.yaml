@@ -63,6 +63,8 @@ spec:
       cpu: 500m
       memory: 1Gi
   jvmOptions:
+    "-XX":
+      "NativeMemoryTracking": "summary"
     javaSystemProperties:
       - name: io.aiven.commons.auth.uri
         value: http://169.254.169.254/latest/meta-data/iam/security-credentials,http://169.254.169.254/latest/meta-data/placement/availability-zone
