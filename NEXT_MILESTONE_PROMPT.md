@@ -1,112 +1,131 @@
-# Next Session: AWS_PLAN.md Milestone 10
+# Next Session: AWS_PLAN.md Milestone 11
 
-Start AWS_PLAN.md Milestone 10 (CI/CD). Read `WHATS_NEXT.md` first for full
-current state (the Milestone 9 entry has the real ALB Ingress story — a
-genuine credential-architecture bug fix for Debezium, two rounds of real
-memory-pressure debugging, and two independent end-to-end SSE proofs), then
-`AWS_PLAN.md`'s Milestone 10 section for scope: GitHub Actions running the
-existing `pytest` suite on push, building and pushing all four Docker images
-(app, streaming, dbt, plus the Node `realtime` service) to ECR on merge to
-main. Deployment automation itself gets documented as "how this extends to
-auto-deploy," not fully built — this project's per-session teardown
-discipline means there's usually no live cluster to auto-deploy onto.
+Start AWS_PLAN.md Milestone 11 (shrink storage to real minimums, deferred
+from Milestone 5). Read `WHATS_NEXT.md` first for full current state (the
+Milestone 10 entry has the real CI/CD story — nine real bugs found and
+fixed getting GitHub Actions' OIDC federation actually working, most in the
+trust-policy surface itself), then `AWS_PLAN.md`'s Milestone 11 section for
+scope: RDS `allocated_storage` destroyed/recreated from `50`/`gp2`/
+`max_allocated_storage=100` down to the real verified minimum (`5` GiB on
+`db.t4g.micro`/postgres18/`gp2`), and the Kafka/Mongo EBS PVCs (currently
+`5Gi`/`2Gi`+`1Gi`) shrunk to their real EBS floor (`1Gi` each) — both grow-only
+by AWS/Kubernetes' own documentation, so this is destroy/recreate, not a
+config edit.
 
-Before starting, confirm what's actually still live on AWS the same way every
-prior milestone has — EKS/RDS were both still `ACTIVE`/`available` at the end
-of the Milestone 9 session (confirmed via `describe-cluster`/
-`describe-db-instances`), and the **full CDC/streaming stack is up and
-healthy** (not scaled to zero, unlike every previous milestone's starting
-point) — but check again rather than trust that a session boundary didn't
-change anything.
+Before starting, confirm what's actually still live on AWS the same way
+every prior milestone has — EKS/RDS were both still `ACTIVE`/`available` at
+the end of the Milestone 10 session (confirmed via `describe-cluster`/
+`describe-db-instances`, RDS storage still at the pre-shrink `50` GiB), all
+34 pods across all 3 namespaces `Running`/`Completed`, nothing crash-looping
+— but check again rather than trust that a session boundary didn't change
+anything.
 
-**Real state checked at the end of the Milestone 9 session, to build on
+**This is the first real exercise of the Terraform CI/CD pipeline Milestone
+10 just built — that's the whole reason the user wanted this milestone
+picked up next.** The RDS storage change is a normal Terraform diff
+(`allocated_storage` edited in `terraform/modules/rds/main.tf`, no
+`storage_type` override needed since `gp2` is already the default in use)
+and should flow through the real pipeline exactly as designed: a PR
+touching `terraform/**` → `plan` runs automatically, read its output for
+real before merging → merge → manually trigger `apply` via
+`workflow_dispatch` (Actions → Terraform → Run workflow — no `gh` CLI
+installed as of the Milestone 10 session, use the web UI unless that's
+changed) → confirm it actually applied against real AWS and shows up in
+the `aws-infra` Environment's deployment history. Don't fall back to a
+local `terraform apply` for this one specifically unless the pipeline
+itself is genuinely broken — that would defeat the actual point of doing
+this milestone now rather than later.
+
+**The Kafka/Mongo PVC resize is separate, plain `kubectl` work, not
+Terraform** — `k8s/overlays/aws-cdc/kafka-cluster.yaml`/
+`mongodb-community.yaml` aren't Terraform-managed, so there's no CI/CD path
+for this part regardless; it stays a local, manual `kubectl delete pvc` +
+reapply with `size: 1Gi`, same as `AWS_PLAN.md`'s own scoping already says.
+
+**Real state checked at the end of the Milestone 10 session, to build on
 rather than rediscover:**
 
-- **This repo has never been pushed anywhere** — `git remote -v` is empty.
-  Milestone 10 is the first time this project gets a real git remote at all,
-  not just a CI/CD add-on to an existing one.
-- **20 files are uncommitted right now**, all real Milestone 9 work (new IRSA
-  role + vendored IAM policy in `modules/iam/`, the `Ingress` + ALB controller
-  ServiceAccount overlay, the `debezium_replication` role migration, Kafka/
-  Mongo/ALB-controller resource right-sizing, two new `helm/*/values-override.yaml`
-  files). **This needs to be committed before anything else in Milestone 10** —
-  both as basic hygiene and because creating a GitHub repo and wiring Actions
-  needs a real commit history to push, not a clean slate.
-- **GitHub decided over GitLab** — deliberated explicitly this session, not
-  arbitrary. The target job posting (`project_target_job_posting` memory)
-  names no CI/CD platform at all, so this wasn't a stack-matching decision
-  like MongoDB-over-DocumentDB was — it came down to portfolio value (a public
-  GitHub repo is the more standard "here's my work" artifact to link) and
-  freshness (GitHub Actions is the user's past experience, not their current
-  day-job tool, so redoing it here adds more than restating already-current
-  GitLab skills would). **Recommend a public repo specifically** — confirmed
-  live via GitHub's own current billing docs that public repos get
-  unconditionally free, unlimited-minute Actions usage, vs. 2,000 free
-  minutes/month on a private repo under the Free plan. Worth confirming this
-  is still what the user wants before creating the repo, not assuming.
-- **`realtime/` has its own, separate `Dockerfile`** — grepped and confirmed:
-  the root `Dockerfile` only has three build targets (`runtime`,
-  `runtime-streaming`, `runtime-dbt`), all Python. The Node service builds
-  from a completely different Docker context (`realtime/`), not a fourth
-  target on the same Dockerfile. The GitHub Actions workflow needs two
-  distinct build contexts, not one build matrix over four targets of the same
-  file.
-- **No AWS credentials mechanism for GitHub Actions exists yet.** This
-  project has been consistently anti-static-credential everywhere else (RDS
-  IAM auth instead of passwords, EKS IRSA instead of node-level AWS keys, GCP
-  WIF instead of service-account key files) — the same instinct applies here:
-  GitHub Actions supports OIDC federation directly to an AWS IAM role
-  (`aws-actions/configure-aws-credentials`'s documented OIDC path), which
-  needs a **new Terraform IAM role** in `modules/iam/` (a GitHub OIDC identity
-  provider + a role trusting it, scoped by repo/branch via the token's `sub`
-  claim) — the same shape as every other IRSA-style role in this file, just
-  federated from GitHub's OIDC issuer instead of the EKS cluster's. Verify
-  GitHub's current OIDC provider URL/thumbprint and the exact `sub` claim
-  format against GitHub's own current docs at implementation time, not from
-  training-data memory — not something to assume unchanged.
-- **`ecr:GetAuthorizationToken`/`ecr:PutImage`-shaped permissions don't exist
-  on any current IAM role** — the new GitHub Actions role needs its own
-  policy scoped to the specific ECR repos this project already has in
-  `modules/ecr/` (four repos: app, streaming, dbt, realtime — confirm the
-  realtime one's exact name live rather than guess it).
-- Full CDC pipeline verified twice, end-to-end, through the real ALB DNS
-  name — both before and after the Milestone 9 capacity fixes. All 4 nodes
-  sit at 70-85% real memory, none over capacity. `dbt-build` CronJob runs
-  confirmed actually completing (not just scheduled) under the corrected
-  resource requests.
+- **This repo now has a real git remote for the first time**: public
+  `events-api` under `viacheslavbinetskyiaws-ctrl` (a *different* GitHub
+  account than commit-author email alone would suggest — verify live via
+  `ssh -T git@github-aws-personal` if this ever needs re-confirming, don't
+  re-derive it from email). `git log`/`git status` should both be clean
+  going into this session.
+- **Four OIDC-federated IAM roles exist** in `terraform/modules/github-oidc/`
+  (`ecr_push`, `terraform_plan`, `terraform_apply`, `deploy`) — no static
+  AWS credentials anywhere in GitHub. `terraform_apply` holds
+  `AdministratorAccess` and is the one that'll actually run this
+  milestone's RDS destroy/recreate.
+- **Every GitHub Actions trigger context gets its own distinct OIDC `sub`
+  claim shape** — this bit Milestone 10 three separate times (`push`,
+  `pull_request`, and a job referencing `environment:` are all genuinely
+  different formats, confirmed against GitHub's own docs each time, never
+  assumed from one to infer another). Worth remembering if this milestone's
+  workflow usage ever hits a similar `AssumeRoleWithWebIdentity` denial —
+  check the actual current docs for the exact trigger context in play,
+  don't extrapolate from a different one that happened to work.
+- **`aws_eks_access_entry.creator` (`modules/eks/main.tf`) and
+  `k8s_viewer_trust` (`modules/iam/main.tf`) are now hardcoded** to
+  `terraform-events-api`'s IAM user ARN, not derived from
+  `data.aws_caller_identity.current.arn` — that broke the moment Terraform
+  started also running via an assumed role (CI). Local applies are
+  unaffected (that hardcoded ARN is exactly the identity local applies
+  already authenticate as via the `events-api-tf` profile).
+- RDS `allocated_storage` is still `50` (not yet shrunk — that's this
+  milestone's actual job). Real minimum already verified live last session
+  (`aws rds describe-orderable-db-instance-options`): `5` GiB. Real EBS
+  floor for the PVCs, also already verified (`aws ec2 create-volume
+  --dry-run --size 0`): `1Gi`.
+- **Real, calculated savings from this whole milestone: roughly $5-6/month**
+  (gp2 ≈ $0.119/GB-mo, gp3 ≈ $0.095/GB-mo, both AWS Pricing API-verified) —
+  small, not urgent on its own; the actual value here is exercising the new
+  CI/CD pipeline for real, plus closing out a documented-but-deferred item.
+- **This is a full teardown of Milestone 3/5's data plane, not an isolated
+  change** — after the RDS instance is recreated, the full CDC verification
+  needs redoing from scratch: both Postgres publications
+  (`create-publications.sql`), both replication slots, both Debezium
+  connectors, both BigQuery sink connectors, `alembic upgrade head` again,
+  the one-time `GRANT rds_iam` bootstrap again. Same shape as the original
+  storage-full incident's recovery (Milestone 5), which already rebuilt
+  this once — that session's own notes are the closest precedent for what
+  to expect.
 
 **Start with `superpowers`'s `brainstorming` skill, not straight
-implementation** — same precedent as Milestones 6-9. Real design surface
-here: the exact GitHub OIDC trust-policy shape and its `sub`-claim scoping
-(all branches vs. `main`-only vs. per-environment), the workflow's trigger
-split (tests on every push vs. image build+push gated to merges to `main`
-specifically), whether CI runs the existing integration tests (which need a
-real Postgres) or just the unit suite, and the two-Docker-context build
-matrix.
+implementation** — same precedent as every milestone since 5. Real design
+surface here despite the mechanical-sounding scope: exactly how to sequence
+the RDS Terraform change through a PR (one PR for just the storage change,
+or bundled with anything else pending), whether the Kafka/Mongo PVC resize
+happens before or after the RDS change, and how much of the post-recreate
+CDC re-verification needs to happen before the milestone can be called done
+versus deferred to a follow-up note.
 
 Follow CLAUDE.md's hands-on teaching mode by default: explain what needs
 to change and why, hand over the actual commands/edit content, let me
-run/apply it myself, then verify afterward.
+run/apply it myself, then verify afterward — same discipline used
+throughout Milestone 10, including reading files back after every edit
+before trusting they match.
 
 **Plugins to use this session:**
 - `superpowers` — `brainstorming` → `writing-plans` before implementation
   (see above).
-- `terraform` — the new GitHub OIDC provider + IAM role + ECR-scoped policy
-  in `modules/iam/`, following the existing IRSA-shaped pattern in that file.
-- `aws-core` — its `aws-iam` skill covers the new OIDC trust-policy
-  correctness (a real, easy-to-get-wrong surface — GitHub's own docs warn
-  about exactly this); its `aws-secrets-manager` skill's hook still carries
-  forward as a standing constraint even though this milestone doesn't touch
-  RDS/Secrets Manager directly.
-- `claude-security` — worth an explicit pass this time, not just an offer —
-  this milestone creates a new public-facing GitHub repo *and* a new
-  federated-identity trust relationship into this AWS account, a genuinely
-  larger new attack surface than most prior milestones.
+- `terraform` — the RDS module edit itself is small, but verify current
+  `aws_db_instance` docs for `allocated_storage`/`storage_type` behavior on
+  a destroy/recreate rather than assume it hasn't changed since Milestone 2's
+  own `storage_encrypted` replacement already taught this project that RDS
+  replacement doesn't always change what you'd expect (the endpoint hostname
+  didn't change last time, for instance — don't assume this time is
+  identical either, check).
+- `aws-core` — its `aws-database`/RDS-specific guidance for the actual
+  destroy/recreate mechanics; its `aws-secrets-manager` skill's standing
+  constraint still applies (the master password lives in Secrets Manager,
+  never as plaintext).
 
-Not relevant this milestone: `bigquery-data-analytics`, `mongodb`,
-`frontend-design`, `claude-md-management`, `skill-creator`, `warp`,
-`code-simplifier`, `playwright`/`claude-in-chrome` (checking a GitHub Actions
-run is more naturally done via the `gh` CLI than a browser). `commit-commands`
-*is* relevant this time, unlike most prior milestones — this is the first
-session where committing and pushing to a real remote is itself part of the
-milestone's own scope, not just end-of-session housekeeping.
+Not relevant this milestone: `bigquery-data-analytics`, `mongodb` (beyond
+the mechanical PVC resize — no schema/query work), `frontend-design`,
+`claude-md-management`, `skill-creator`, `warp`, `code-simplifier`,
+`playwright`/`claude-in-chrome` (checking a GitHub Actions run is more
+naturally done via the `gh` CLI — not installed as of Milestone 10 — or the
+web UI than a browser). `claude-security` isn't the obvious fit either —
+this milestone doesn't add new attack surface the way Milestone 10 did
+(new public repo, new federated trust relationship); it's a storage-sizing
+cleanup on infrastructure that already exists.

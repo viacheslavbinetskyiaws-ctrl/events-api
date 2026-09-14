@@ -400,7 +400,7 @@ still present via direct `gcloud`/`bq` calls against the live project.
   Replaces `kubectl port-forward` as the only way in — the one piece of
   "production readiness" that's been faked this entire project.
 
-### 10. CI/CD
+### 10. CI/CD — done, see `WHATS_NEXT.md`
 
 - GitHub Actions: run the existing `pytest` suite on push, build and push all
   four Docker images (app, streaming, dbt, plus the new Node service) to ECR on
@@ -409,6 +409,17 @@ still present via direct `gcloud`/`bq` calls against the live project.
   not fully built — this project's own teardown-after-session discipline means
   there's usually no live cluster to auto-deploy onto; a GitOps-style follow-on
   (ArgoCD, etc.) would be the real next step in an always-on environment.
+- **Scope actually expanded during implementation**, at the user's explicit
+  request: a manual (`workflow_dispatch`) app-deploy job was added after all
+  (closing most of the "not fully built" gap above, short of full GitOps),
+  and a second workflow was added for infrastructure changes —
+  `terraform plan` automatic on every PR touching `terraform/**`,
+  `terraform apply` manually triggered — specifically so Milestone 11's
+  storage-shrink work could be applied through the pipeline rather than by
+  hand. Four purpose-scoped OIDC-federated IAM roles, no static AWS
+  credentials in GitHub anywhere. Nine real bugs found and fixed getting
+  this actually working end-to-end — full detail in `WHATS_NEXT.md`'s own
+  Milestone 10 entry, not repeated here.
 
 ### 11. Shrink storage to real minimums (destroy/recreate, deferred from Milestone 5)
 
@@ -558,7 +569,10 @@ this is intentionally a separate exercise, not something to fold into it.
 - Milestone 9: the ALB's public DNS name serves both `/stream/events` (Node) and
   every other route (Python) correctly, with no `port-forward` involved.
 - Milestone 10: a push to a feature branch runs tests in GitHub Actions; a merge
-  to main results in four new image tags actually present in ECR.
+  to main results in four new arm64-correct image tags actually present in ECR;
+  a manually-triggered deploy actually updates the running Deployments; a PR
+  touching `terraform/` runs `plan` automatically; merging it never
+  auto-applies; a manually-triggered `apply` succeeds against real AWS.
 - Milestone 12: `terraform plan` reports zero drift against the already-live GCP
   WIF pool/provider/bindings after import; the BigQuery sink connectors still
   authenticate successfully afterward (or, if the credential-config was
