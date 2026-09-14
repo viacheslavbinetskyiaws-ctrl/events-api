@@ -466,6 +466,29 @@ still present via direct `gcloud`/`bq` calls against the live project.
   the full CDC verification (publications, replication slots, both Debezium
   connectors, both BigQuery sink connectors) from scratch afterward — this is
   a full teardown of Milestone 3 and 5's data plane, not an isolated change.
+- **Added scope, found during a follow-up capacity audit (2026-09-14), not
+  part of the original storage-only framing but a natural fit**: `vpc-cni`
+  (the `aws-node` DaemonSet) and `kube-proxy` currently run as EKS's own
+  self-managed bootstrap defaults — confirmed live via `aws eks
+  list-addons`, which shows only `aws-ebs-csi-driver` as a Terraform/EKS-
+  managed addon on this cluster. Neither has a declared resource request,
+  so their real memory usage (~51Mi/~22Mi respectively, confirmed via
+  `kubectl top pod`) is invisible to the scheduler's own accounting —
+  contributing, uncounted, to genuine tightness on node `ip-10-0-11-18`
+  (93% requested, ~97% real). Verified this is standard real-world practice,
+  not scope creep for its own sake: AWS's own docs state plainly that
+  production environments should convert these from self-managed to
+  Terraform-tracked `aws_eks_addon` resources, and the popular
+  `terraform-aws-modules/eks` community module has managed them this way
+  by default since v1.18 (2021). Add both as `aws_eks_addon` resources in
+  `terraform/modules/eks/main.tf`, matching the existing `ebs_csi` addon's
+  pattern (`resolve_conflicts_on_create = "OVERWRITE"` to adopt the
+  already-running self-managed versions), with `configuration_values`
+  setting real resource requests instead of the current implicit none.
+  Purely a scheduler-accounting fix — doesn't reduce real memory usage,
+  won't fully resolve `ip-10-0-11-18`'s tightness on its own (the Kafka
+  broker's 720Mi request is the larger factor there, and this milestone's
+  own PVC-driven reschedule of that pod is the more likely actual relief).
 
 ### 12. Terraform-manage the GCP WIF resources (closes the AWS/GCP IaC asymmetry)
 
