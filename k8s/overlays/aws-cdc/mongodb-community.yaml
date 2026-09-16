@@ -48,7 +48,7 @@ spec:
             storageClassName: gp3
             resources:
               requests:
-                storage: 2Gi
+                storage: 1Gi
         - metadata:
             name: logs-volume
           spec:
