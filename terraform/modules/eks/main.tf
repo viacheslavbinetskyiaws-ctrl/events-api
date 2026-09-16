@@ -285,3 +285,57 @@ resource "aws_eks_addon" "ebs_csi" {
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 }
+
+resource "aws_eks_addon" "vpc_cni" {
+  cluster_name = aws_eks_cluster.this.name
+  addon_name   = "vpc-cni"
+
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  configuration_values = jsonencode({
+    resources = {
+      requests = {
+        cpu    = "25m"
+        memory = "64Mi"
+      }
+      limits = {
+        cpu    = "50m"
+        memory = "128Mi"
+      }
+    }
+    nodeAgent = {
+      resources = {
+        requests = {
+          cpu    = "10m"
+          memory = "32Mi"
+        }
+        limits = {
+          cpu    = "25m"
+          memory = "64Mi"
+        }
+      }
+    }
+  })
+}
+
+resource "aws_eks_addon" "kube_proxy" {
+  cluster_name = aws_eks_cluster.this.name
+  addon_name   = "kube-proxy"
+
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  configuration_values = jsonencode({
+    resources = {
+      requests = {
+        cpu    = "100m"
+        memory = "48Mi"
+      }
+      limits = {
+        cpu    = "200m"
+        memory = "96Mi"
+      }
+    }
+  })
+}
