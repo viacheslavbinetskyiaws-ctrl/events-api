@@ -42,8 +42,8 @@ resource "aws_db_instance" "this" {
   engine         = "postgres"
   instance_class = "db.t4g.micro"
 
-  allocated_storage     = 50
-  max_allocated_storage = 100
+  allocated_storage     = 5
+  max_allocated_storage = 0
   db_name               = "events"
   username              = "events"
 
