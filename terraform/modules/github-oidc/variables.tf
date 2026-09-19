@@ -28,3 +28,7 @@ variable "github_owner_id" {
 variable "github_repo_id" {
   type = string
 }
+
+variable "debezium_secret_arn" {
+  type = string
+}

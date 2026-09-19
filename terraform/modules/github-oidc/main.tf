@@ -102,10 +102,9 @@ resource "aws_iam_role_policy_attachment" "terraform_plan" {
 
 # terraform plan still needs to acquire/release the S3-native state lock
 # (backend.tf's use_lockfile = true) even though it makes no other writes —
-# ReadOnlyAccess alone can't create the .tflock object. Key path matches
-# backend.tf's literal `key = "events-api/terraform.tfstate"` exactly; if
-# that ever changes, this must change with it (backend blocks can't
-# reference variables, so this coupling can't be made a shared value).
+# ReadOnlyAccess alone can't create the .tflock object. Key paths match each
+# root's backend.tf `key` literally (foundation and cluster); backend blocks
+# can't reference variables, so this coupling can't be made a shared value.
 data "aws_iam_policy_document" "terraform_plan_state_lock" {
   statement {
     actions = [
@@ -113,7 +112,10 @@ data "aws_iam_policy_document" "terraform_plan_state_lock" {
       "s3:PutObject",
       "s3:DeleteObject",
     ]
-    resources = ["${var.state_bucket_arn}/events-api/terraform.tfstate.tflock"]
+    resources = [
+      "${var.state_bucket_arn}/events-api/terraform.tfstate.tflock",
+      "${var.state_bucket_arn}/events-api/cluster.tfstate.tflock",
+    ]
   }
 }
 
@@ -207,4 +209,39 @@ resource "aws_iam_policy" "deploy_describe_cluster" {
 resource "aws_iam_role_policy_attachment" "deploy_describe_cluster" {
   role       = aws_iam_role.deploy.name
   policy_arn = aws_iam_policy.deploy_describe_cluster.arn
+}
+
+# --- bootstrap: dispatch-only cluster lifecycle identity (cluster-up/down) ---
+# Trusts github_trust (ref:refs/heads/main), the same policy deploy and
+# ecr_push use: a workflow_dispatch run on any other branch carries a
+# different sub claim and cannot assume this role, so "main only" is enforced
+# by IAM itself, with no Environment protection rule needed. AWS-side it can
+# only describe the cluster (for `aws eks update-kubeconfig`) and read the
+# Debezium secret; its real authority is the cluster-admin EKS access entry
+# created in terraform/cluster (modules/eks).
+resource "aws_iam_role" "bootstrap" {
+  name               = "${var.name_prefix}-bootstrap"
+  assume_role_policy = data.aws_iam_policy_document.github_trust.json
+}
+
+data "aws_iam_policy_document" "bootstrap" {
+  statement {
+    actions   = ["eks:DescribeCluster"]
+    resources = [var.eks_cluster_arn]
+  }
+
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [var.debezium_secret_arn]
+  }
+}
+
+resource "aws_iam_policy" "bootstrap" {
+  name   = "${var.name_prefix}-bootstrap-policy"
+  policy = data.aws_iam_policy_document.bootstrap.json
+}
+
+resource "aws_iam_role_policy_attachment" "bootstrap" {
+  role       = aws_iam_role.bootstrap.name
+  policy_arn = aws_iam_policy.bootstrap.arn
 }
