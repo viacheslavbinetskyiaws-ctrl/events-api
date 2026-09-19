@@ -28,39 +28,62 @@ prometheus:
         value: kafka-connect
         effect: NoSchedule
     retention: 6h
-    replicas: 0
+    replicas: 1
+    # Original 256Mi request was under real observed usage (312Mi, confirmed
+    # live during the Milestone 11 capacity crunch) — corrected up, the
+    # opposite direction from most fixes this session, same as Grafana's
+    # sidecars.
     resources:
       requests:
         cpu: 100m
-        memory: 256Mi
+        memory: 350Mi
       limits:
         cpu: 500m
         memory: 512Mi
 
 prometheusOperator:
+  # Trimmed (64Mi -> 48Mi) during the Milestone 11 capacity crunch — real
+  # usage confirmed live at 27-29Mi, still ~1.65x headroom.
   resources:
     requests:
       cpu: 50m
-      memory: 64Mi
+      memory: 48Mi
     limits:
       cpu: 100m
       memory: 128Mi
+  # Config-reloader sidecar (injected into every Prometheus/Alertmanager
+  # pod, configured via the *operator's* own flags, not a per-CR field —
+  # confirmed against the chart's actual template source) had zero
+  # declared resources at all — completely unbounded, invisible to the
+  # scheduler. Real usage confirmed live at 14Mi.
+  prometheusConfigReloader:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
 
 grafana:
-  replicas: 0
+  replicas: 1
   tolerations:
     - key: dedicated
       operator: Equal
       value: kafka-connect
       effect: NoSchedule
   sidecar:
+    # Real usage (confirmed live during the Milestone 11 capacity crunch:
+    # 81-85Mi per sidecar container) runs ~2.5x over the original 32Mi
+    # request — under-provisioned, not over, the opposite direction from
+    # every other fix this session made. Corrected to reflect reality.
     resources:
       requests:
         cpu: 25m
-        memory: 32Mi
+        memory: 96Mi
       limits:
         cpu: 100m
-        memory: 128Mi
+        memory: 160Mi
   resources:
     requests:
       cpu: 50m
@@ -70,10 +93,12 @@ grafana:
       memory: 512Mi
 
 kube-state-metrics:
+  # Trimmed further (64Mi -> 40Mi -> 32Mi) during the Milestone 11 capacity
+  # crunch — real usage confirmed live at 20-27Mi, still ~1.2-1.6x headroom.
   resources:
     requests:
       cpu: 25m
-      memory: 64Mi
+      memory: 32Mi
     limits:
       cpu: 100m
-      memory: 128Mi
+      memory: 80Mi

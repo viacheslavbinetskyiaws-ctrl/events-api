@@ -31,8 +31,48 @@ resource "aws_db_parameter_group" "logical_replication" {
   }
 
   parameter {
+    # 5000 (~4.88GiB) was sized against the original 50GiB allocated_storage
+    # (~10% margin) and never revisited when Milestone 11 shrank storage to
+    # the verified 5GiB floor — at that scale it was ~98% of total storage
+    # per slot, capable of starving the instance on its own. Lowered to
+    # 1000 (~0.98GiB): real WAL generation here is tiny (a normal Kafka
+    # Connect reconnect generates a few MB, confirmed live), so this
+    # comfortably survives realistic transient events while capping
+    # worst-case exposure at ~20% of total storage per slot instead of ~98%.
     name         = "max_slot_wal_keep_size"
-    value        = "5000"
+    value        = "1000"
+    apply_method = "immediate"
+  }
+
+  # Both are postgres18's stock family defaults, never explicitly set by
+  # this project — same "never revisited after shrinking storage" gap as
+  # max_slot_wal_keep_size, just for parameters that were never customized
+  # at all rather than customized against the old 50GiB assumption.
+  parameter {
+    # wal_keep_size reserves WAL for physical streaming replicas — this
+    # deployment has none (no read replicas, multi_az = false, confirmed
+    # live). Serves no purpose here; 0 is its documented minimum.
+    name         = "wal_keep_size"
+    value        = "0"
+    apply_method = "immediate"
+  }
+
+  parameter {
+    # Real average checkpoint-cycle WAL generation is ~26.5MB (confirmed
+    # live via pg_stat_checkpointer's buffers_written across 325
+    # checkpoints) — 2048MB is wildly oversized for this workload. 256MB
+    # keeps a 10x+ margin over any realistic burst without meaningfully
+    # increasing checkpoint frequency.
+    name         = "max_wal_size"
+    value        = "256"
+    apply_method = "immediate"
+  }
+
+  parameter {
+    # min_wal_size must stay <= max_wal_size; lowered to the allowed floor
+    # for consistency, trivial marginal benefit on its own.
+    name         = "min_wal_size"
+    value        = "128"
     apply_method = "immediate"
   }
 }

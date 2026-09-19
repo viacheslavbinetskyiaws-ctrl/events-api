@@ -1,205 +1,166 @@
-# Next Session: AWS_PLAN.md Milestone 11
+# Next Session: Fully CI/CD-Driven Bootstrap (new initiative — not yet in AWS_PLAN.md)
 
-Start AWS_PLAN.md Milestone 11 (shrink storage to real minimums, deferred
-from Milestone 5 — now also covering `vpc-cni`/`kube-proxy` addon adoption,
-added 2026-09-14, see below). Read `WHATS_NEXT.md` first for full current
-state — Milestone 10's entry has the real CI/CD story (nine real bugs
-getting GitHub Actions' OIDC federation working, most in the trust-policy
-surface itself), and the dated 2026-09-14 follow-up entry right after it
-covers a real capacity audit, a genuine Kafka Connect memory root-cause fix,
-and a full redesign of the `deploy` workflow — all relevant background, not
-just Milestone 10 itself. Then read `AWS_PLAN.md`'s Milestone 11 section for
-full scope: RDS `allocated_storage` destroyed/recreated from `50`/`gp2`/
-`max_allocated_storage=100` down to the real verified minimum (`5` GiB on
-`db.t4g.micro`/postgres18/`gp2`), the Kafka/Mongo EBS PVCs (currently
-`5Gi`/`2Gi`+`1Gi`) shrunk to their real EBS floor (`1Gi` each), and — new —
-adopting `vpc-cni`/`kube-proxy` as proper Terraform-managed `aws_eks_addon`
-resources with real declared requests, matching the `ebs_csi` addon's
-existing pattern.
+Start by reading `WHATS_NEXT.md`'s Milestone 11 and Milestone 12 entries in
+full — both closed out in the same session that scoped this initiative, and
+both surfaced real, specific findings this prompt leans on directly (the
+RDS-storage-decrease AWS limitation, the dbt image bug, the capacity-crunch
+audit, the WAL/storage investigation, the GCP import verification). Then
+read `AWS_PLAN.md`'s own Context section and Milestone 12 entry for how this
+project has scoped and sequenced every prior milestone — this new
+initiative needs the same discipline, since it's genuinely new, unscoped
+ground: it is **not yet a numbered milestone in `AWS_PLAN.md`**. The first
+real job next session is to scope and design it properly (via
+`superpowers`'s `brainstorming` → `writing-plans`, same as every milestone
+since 5 — this one is architectural, not bounded, given it spans Terraform,
+Kubernetes, database bootstrapping, and external service registration as
+one coherent pipeline), likely adding it as a real numbered milestone to
+`AWS_PLAN.md` once scoped, not just implementing ad hoc.
 
-Before starting, confirm what's actually still live on AWS the same way
-every prior milestone has — EKS/RDS were both still `ACTIVE`/`available` as
-of 2026-09-14 (confirmed via `describe-cluster`/`describe-db-instances`, RDS
-storage still at the pre-shrink `50` GiB), all pods across all 3 namespaces
-`Running`/`Completed`, nothing crash-looping — but check again rather than
-trust that a session boundary didn't change anything.
+## The actual goal, in the user's own words from the session that scoped this
 
-**Real usage numbers, verified 2026-09-14** — all three storage targets
-confirm the same story, real usage nowhere near even the shrunk-to
-minimums: RDS **~3.5GiB used of 50GiB allocated** (~7%, via CloudWatch
-`FreeStorageSpace`) against a verified `5GiB` real minimum; Kafka PVC
-**92Mi used of 5Gi** (2%); Mongo data-volume **386Mi used of 2Gi** (20%);
-Mongo logs-volume **69Mi used of 1Gi** (8%) — against a verified `1Gi` EBS
-floor for all three. CPU is a non-issue cluster-wide (1-5% node
-utilization; every pod checked uses a small fraction of its own CPU
-*request*) and — worth remembering rather than re-deriving — **reducing
-CPU requests would not reduce the AWS bill at all**: this project runs
-fixed-size EC2 node groups, not Fargate, so AWS bills for the 4 provisioned
-`t4g.small` instances regardless of what pods request; only changing
-`desired_size`/instance type in `terraform/modules/eks/main.tf` would move
-that number, and that's not realistically achievable right now regardless.
+"I want CI/CD to update or rebuild when something changes. And if I stop
+everything, I want CI/CD to recreate everything later" — with "no or
+minimum manual local commands." Two distinct capabilities, both currently
+missing:
 
-**Node capacity, as of the end of the 2026-09-14 follow-up session** (check
-fresh, don't trust this number to have held): `ip-10-0-11-27` (Kafka
-Connect's dedicated node) recovered from 96-99% to ~80% real memory after a
-real root-cause fix (below). `ip-10-0-11-18` is still tight at ~97% real
-memory — untouched by that fix, driven mostly by the Kafka broker
-(`events-dual-role-0`, 720Mi request, the single largest consumer there)
-plus real `aws-node`/`kube-proxy` usage the scheduler can't see (no declared
-requests — exactly the gap this milestone's new addon-adoption scope
-addresses). Since this milestone's Kafka PVC resize forces that broker pod
-to reschedule anyway, that's the more likely real relief for this node —
-not something to force separately.
+1. **Incremental apply when something changes** — already mostly true for
+   Terraform (the existing `plan`/`apply` pipeline from Milestone 10), not
+   true at all for the Kubernetes/database/external-service side of this
+   stack.
+2. **Full recreate from a torn-down state** — this is the harder one, and
+   the one this whole initiative is really about. Today, recovering this
+   entire stack from zero (which is exactly what the session that scoped
+   this initiative had to do, start to finish, after a real RDS
+   destroy/recreate) took many hours of manual, sequential, hands-on
+   investigation and one-off `kubectl run` pods. None of it is currently
+   push-button, and several of the fixes discovered along the way were
+   genuine one-time bugs (now fixed permanently in code) rather than
+   necessary manual steps — but real manual sequencing remains.
 
-**Real, root-caused fix already applied this cycle, don't rediscover it**:
-Kafka Connect's real memory had grown to 978Mi (only 46Mi below its 1Gi
-limit) because Strimzi auto-computes `-Xmx` as 75% of the container memory
-limit when unset, and G1GC never releases committed heap back to the OS —
-so Milestone 9's own limit increase had silently raised the JVM's own heap
-ceiling too, and it grew into it over the following days. Fixed by pinning
-`-Xmx`/`-Xms` to `384m` in `k8s/overlays/aws-cdc/kafka-connect.yaml`
-(Strimzi JVM options use JDK unit conventions — `m`/`g`, not Kubernetes'
-`Mi`/`Gi`), based on real measured live heap usage, not a guess. Verified:
-real RSS dropped to ~690Mi, the hosting node recovered to ~80%. If Kafka
-Connect's memory ever creeps back up, this is a heap-ceiling problem to
-investigate the same way (`jcmd VM.native_memory summary`, not a guess),
-not a "raise the limit again" problem — that's exactly what didn't work
-the first time.
+## The real manual steps this session catalogued, in the order they're needed
 
-**`deploy` was fully redesigned this cycle — re-read `ci.yaml` fresh,
-don't assume the Milestone 10 shape still applies**: it no longer takes an
-`image_tag` input. `build-push` now pushes both `:latest` and the SHA tag
-on every build; k8s manifests permanently reference `:latest`; `deploy` is
-a plain `kubectl rollout restart` (the only thing that actually forces a
-re-pull — a running pod never re-pulls on its own just because a new image
-landed on the same tag) covering `events-api`, `realtime`, and
-`cdc-consumer`. This was a real fix for a self-inflicted regression: the
-original SHA-based design meant `deploy`'s live-only `kubectl set image`
-patch could be silently reverted by any later `kubectl apply -k` on the
-same manifests (it happened for real this cycle). **One real limitation
-found and deliberately not fixed**: `deploy` still can't safely run a full
-`kubectl apply -k` itself — `k8s/overlays/aws` (which every CDC/realtime
-overlay chains through) contains the RBAC `Role`/`RoleBinding` objects
-themselves, and granting an automated CI identity write access to RBAC is
-a genuine privilege-escalation anti-pattern, deliberately excluded from
-Kubernetes' built-in `edit` role and AWS's `EditPolicy` alike. So anything
-beyond the 3 Deployments `deploy` restarts (Kafka Connect config changes,
-RBAC changes, new PVC sizes, the new addon changes this milestone adds)
-still needs a manual, locally-run `kubectl apply -k`/`terraform apply` —
-same as this session did for all of today's fixes.
+Use this list as the actual scope inventory — it's grounded in what
+genuinely had to happen by hand this session, not a guess:
 
-**This is the first real exercise of the Terraform CI/CD pipeline Milestone
-10 built — that's the whole reason the user wanted this milestone picked
-up next.** The RDS storage change and the new `vpc-cni`/`kube-proxy`
-addons are both normal Terraform diffs and should flow through the real
-pipeline exactly as designed: a PR touching `terraform/**` → `plan` runs
-automatically, read its output for real before merging → merge → manually
-trigger `apply` via `workflow_dispatch` (Actions → Terraform → Run
-workflow — no `gh` CLI installed as of this writing, use the web UI unless
-that's changed). Don't fall back to a local `terraform apply` for these
-specifically unless the pipeline itself is genuinely broken — that would
-defeat the actual point of doing this milestone now rather than later.
+1. **`terraform destroy -target=module.rds.aws_db_instance.this` then a
+   normal `apply`** — needed because real AWS RDS genuinely cannot decrease
+   `allocated_storage` in place (confirmed this session against current AWS
+   docs, not assumed) and the CI/CD pipeline's `apply` job has no
+   `-target` support. Two real design options surfaced but not chosen
+   between: (a) build `-target` support into the pipeline's `apply`
+   workflow (a new `workflow_dispatch` input, real but narrow scope), or
+   (b) restructure the RDS resource to use `lifecycle { create_before_destroy
+   = true }` with a forced-new attribute (like renaming `identifier`) so a
+   single ordinary `apply` handles it — real trade-off: a new identifier
+   likely means a new endpoint hostname (this project's own history shows
+   the endpoint *didn't* change on a same-identifier replace, but that's a
+   different case — verify fresh, don't assume, if this path is chosen).
+   This decision needs to happen during next session's design pass, not be
+   assumed here.
+2. **Migration Job trigger** — already fully IRSA-based (no static
+   credentials), but still needs `kubectl delete job` + `kubectl apply -k`
+   run from somewhere. Genuinely close to CI-ready already; needs a scoped
+   role/RBAC `Role` for just this Job (matching the established
+   one-workload-one-identity convention — `migrate`/`dbt`/`app`/`deploy`
+   each already have their own IRSA role and their own RBAC surface, never
+   share one).
+3. **The two `GRANT rds_iam` bootstraps** (`events`, then `events_app`) —
+   currently one-off manual `kubectl run` pods. Real sequencing constraint
+   confirmed live this session, twice: a genuinely fresh RDS instance's
+   `events` role can *only* authenticate via the Secrets-Manager-held
+   master password until the first `GRANT rds_iam TO events` succeeds
+   (IAM auth for a role with no `rds_iam` grant yet fails with a plain
+   `InvalidPasswordError`, not the PAM-specific error a role that *has* the
+   grant produces) — so the very first bootstrap step on a fresh instance
+   cannot use IAM auth at all, by construction. Automating this needs a Job
+   with its own IRSA role that can *read* the RDS-managed Secrets Manager
+   secret via a runtime dynamic reference (never through an LLM or a local
+   shell — the project's own `aws-secrets-manager` skill covers this
+   pattern) to perform that one bootstrap connection, then everything after
+   can use IAM auth normally.
+4. **Publications Job** (`aws-cdc-create-publications`) — **already fixed
+   this session** to use the same IRSA pattern as the migration Job (no
+   more static Secret) — this one is essentially CI-ready already; it just
+   needs the same `kubectl delete job` + `apply -k` trigger as #2.
+5. **Debezium connector registration and recovery** — the connector
+   manifests themselves are already fully declarative
+   (`k8s/overlays/aws-cdc/kafka-connectors.yaml`), but *recovery* from a
+   stale/lost replication slot (drop the `KafkaConnector` CR to release the
+   slot, `pg_drop_replication_slot`, reapply the CR to recreate fresh) is
+   still a manual, investigative runbook today, exercised for real multiple
+   times this session. Worth deciding whether this becomes a scripted
+   Job/workflow step (the mechanics are now well-understood and repeatable)
+   or stays a documented manual runbook for the rare case it's needed.
+6. **The `debezium_replication` password rotation** — deliberately left
+   manual this session, on purpose, after weighing the real trade-off:
+   automating it means granting some ServiceAccount write access to
+   Kubernetes Secrets, a genuinely more sensitive privilege class than
+   anything else this project's automation currently touches (read-only
+   SQL, or SQL scoped to a role's own tables). This is a real decision to
+   make explicitly next session, not default into either direction.
+7. **The Kafka/Mongo PVC resize dance** — plain `kubectl`, deliberately
+   never going through Terraform (no Kubernetes/Helm provider in this
+   project, by design). The two mechanics differ genuinely (Strimzi
+   actively rejects an in-place decrease; a native `StatefulSet`'s
+   `volumeClaimTemplates` is simply immutable) — both are now well-
+   understood, repeatable procedures, but still hand-run today.
 
-**The Kafka/Mongo PVC resize is separate, plain `kubectl` work, not
-Terraform** — `k8s/overlays/aws-cdc/kafka-cluster.yaml`/
-`mongodb-community.yaml` aren't Terraform-managed, so there's no CI/CD path
-for this part regardless; it stays a local, manual `kubectl delete pvc` +
-reapply with `size: 1Gi`, same as `AWS_PLAN.md`'s own scoping already says.
+## The real architectural blocker already named, twice, in this project's own history
 
-**Real state checked during the 2026-09-14 follow-up session, to build on
-rather than rediscover:**
+`k8s/overlays/aws` — which every CDC/realtime/dbt overlay chains through —
+contains the RBAC `Role`/`RoleBinding` objects themselves
+(`viewer-rbac.yaml`, `deploy-rbac.yaml`). Granting any automated CI identity
+broader `kubectl apply -k` access without first pulling those RBAC objects
+into their own overlay (one an automated identity never touches) is a real
+privilege-escalation anti-pattern — confirmed against AWS's own
+access-policy docs (`AmazonEKSEditPolicy` has zero coverage for third-party
+CRDs like Strimzi's and the MongoDB Community Operator's anyway, a second,
+independent reason the current narrow `deploy` scope can't just be widened).
+**Closing this properly, if the design calls for broader `kubectl apply -k`
+access from CI at all, means restructuring the manifests first** — not just
+loosening an IAM policy. This may not even be necessary depending on how
+next session's design lands (several narrow, purpose-specific Jobs following
+the existing one-workload-one-identity convention may cover most of the
+real need without ever widening `deploy`'s own scope).
 
-- **This repo has a real git remote**: public `events-api` under
-  `viacheslavbinetskyiaws-ctrl` (a *different* GitHub account than
-  commit-author email alone would suggest — verify live via `ssh -T
-  git@github-aws-personal` if this ever needs re-confirming). `git
-  log`/`git status` should both be clean going into this session.
-- **Five OIDC-federated IAM roles exist** in `terraform/modules/github-oidc/`
-  (`ecr_push`, `terraform_plan`, `terraform_apply`, `deploy` — plus
-  whatever this milestone's own work adds) — no static AWS credentials
-  anywhere in GitHub. `terraform_apply` holds `AdministratorAccess` and is
-  the one that'll actually run this milestone's RDS/addon changes.
-- **Every GitHub Actions trigger context gets its own distinct OIDC `sub`
-  claim shape** — this bit Milestone 10 three separate times (`push`,
-  `pull_request`, and a job referencing `environment:` are all genuinely
-  different formats, confirmed against GitHub's own docs each time, never
-  assumed from one to infer another). Worth remembering if this milestone's
-  workflow usage ever hits a similar `AssumeRoleWithWebIdentity` denial —
-  check the actual current docs for the exact trigger context in play,
-  don't extrapolate from a different one that happened to work.
-- **`aws_eks_access_entry.creator` (`modules/eks/main.tf`) and
-  `k8s_viewer_trust` (`modules/iam/main.tf`) are hardcoded** to
-  `terraform-events-api`'s IAM user ARN, not derived from
-  `data.aws_caller_identity.current.arn` — that broke the moment Terraform
-  started also running via an assumed role (CI). Local applies are
-  unaffected (that hardcoded ARN is exactly the identity local applies
-  already authenticate as via the `events-api-tf` profile). Worth
-  remembering when adding the new `vpc-cni`/`kube-proxy` addons: if
-  anything about their setup references the applying identity dynamically,
-  check it the same way.
-- RDS `allocated_storage` is still `50` (not yet shrunk — that's this
-  milestone's actual job) — see the real-usage numbers already given above,
-  no need to re-derive the verified minimums (`5GiB` RDS, `1Gi` EBS floor).
-- **Real, calculated savings from the storage-shrink part: roughly
-  $5-6/month** (gp2 ≈ $0.119/GB-mo, gp3 ≈ $0.095/GB-mo, both AWS Pricing
-  API-verified) — small, not urgent on its own; the actual value here is
-  exercising the new CI/CD pipeline for real, plus closing out a
-  documented-but-deferred item. The addon-adoption part has **zero cost
-  impact either way** — it's a scheduler-accounting fix, not a resource
-  reduction (see `AWS_PLAN.md`'s own note on this).
-- **This is a full teardown of Milestone 3/5's data plane, not an isolated
-  change** — after the RDS instance is recreated, the full CDC verification
-  needs redoing from scratch: both Postgres publications
-  (`create-publications.sql`), both replication slots, both Debezium
-  connectors, both BigQuery sink connectors, `alembic upgrade head` again,
-  the one-time `GRANT rds_iam` bootstrap again. Same shape as the original
-  storage-full incident's recovery (Milestone 5), which already rebuilt
-  this once — that session's own notes are the closest precedent for what
-  to expect.
+## Real technical assets already in place to build on, not rediscover
 
-**Start with `superpowers`'s `brainstorming` skill, not straight
-implementation** — same precedent as every milestone since 5. Real design
-surface here despite the mechanical-sounding scope: exactly how to sequence
-the RDS Terraform change and the new addon adoption through PRs (one
-combined PR or split), whether the Kafka/Mongo PVC resize happens before or
-after the RDS change, how `resolve_conflicts_on_create` should be set for
-adopting the already-running self-managed `vpc-cni`/`kube-proxy` (verify
-current AWS docs for this rather than copy the `ebs_csi` addon's exact
-setting without checking it still applies the same way), and how much of
-the post-recreate CDC re-verification needs to happen before the milestone
-can be called done versus deferred to a follow-up note.
+- The migration Job and (as of this session) the publications Job both
+  already demonstrate the working pattern for a CI-triggerable, credential-
+  free (beyond IRSA) Job: `serviceAccountName` bound to a scoped IRSA role,
+  an `initContainer` (or the main container itself) minting a fresh IAM
+  token via `aws rds generate-db-auth-token`, no static Secret anywhere.
+  Any new automated bootstrap step should copy this shape, not invent a new
+  one.
+- The Dockerfile's `dbt_packages` bug (every CI-built dbt image was
+  silently broken) is fixed — future full-recreate cycles will build
+  correctly without rediscovering this.
+- All 9+ resource right-sizing fixes from this session, plus the 3 WAL
+  parameter corrections, plus the GCP WIF Terraform module, are already
+  committed as code (once this session's own work is committed — check
+  `git status` first) — a fresh recreate from zero will already deploy with
+  every one of these fixes baked in, with nothing extra needed there.
 
-Follow CLAUDE.md's hands-on teaching mode by default: explain what needs
-to change and why, hand over the actual commands/edit content, let me
-run/apply it myself, then verify afterward — same discipline used
-throughout Milestone 10 and the 2026-09-14 follow-up, including reading
-files back after every edit before trusting they match.
+## Plugins to use this session
 
-**Plugins to use this session:**
-- `superpowers` — `brainstorming` → `writing-plans` before implementation
-  (see above).
-- `terraform` — the RDS module edit is small, but verify current
-  `aws_db_instance` docs for `allocated_storage`/`storage_type` behavior on
-  a destroy/recreate rather than assume it hasn't changed since Milestone 2's
-  own `storage_encrypted` replacement already taught this project that RDS
-  replacement doesn't always change what you'd expect (the endpoint hostname
-  didn't change last time, for instance — don't assume this time is
-  identical either, check). Also verify current `aws_eks_addon` docs for
-  `vpc-cni`/`kube-proxy` specifically — exact addon names, current default
-  versions for this cluster's Kubernetes version, and `configuration_values`
-  schema for setting resource requests, rather than assume from the
-  `ebs_csi` addon's own (different) configuration shape.
-- `aws-core` — its `aws-database`/RDS-specific guidance for the actual
-  destroy/recreate mechanics; its `aws-secrets-manager` skill's standing
-  constraint still applies (the master password lives in Secrets Manager,
-  never as plaintext).
+- `superpowers` — `brainstorming` → `writing-plans`, and treat this as
+  architectural (new subsystem spanning multiple layers), not bounded —
+  same reasoning this session used to classify Milestone 11/12 as bounded
+  extensions of existing patterns, which this genuinely is not.
+- `terraform` — for the RDS destroy-vs-create_before_destroy decision
+  specifically; verify current `lifecycle` / `create_before_destroy`
+  interaction with `identifier` against the real provider docs rather than
+  assume, same discipline the GCP import work used this session.
+- `aws-core` — `aws-secrets-manager` for the master-password-read design
+  (runtime dynamic references, never a raw fetch) and `aws-iam` for
+  scoping any new IRSA role/RBAC `Role` narrowly, matching the existing
+  one-workload-one-identity convention exactly.
+- `claude-security` — worth considering once a concrete design exists,
+  specifically for the "does this new automated identity's privilege scope
+  actually stay narrow" question (the RBAC-in-overlay blocker and the
+  Secrets-write trade-off for password rotation are exactly its kind of
+  review) — not needed for the brainstorming/design pass itself.
 
-Not relevant this milestone: `bigquery-data-analytics`, `mongodb` (beyond
-the mechanical PVC resize — no schema/query work), `frontend-design`,
-`claude-md-management`, `skill-creator`, `warp`, `code-simplifier`,
-`playwright`/`claude-in-chrome` (checking a GitHub Actions run is more
-naturally done via the `gh` CLI — not installed as of this writing — or the
-web UI than a browser). `claude-security` isn't the obvious fit either —
-this milestone doesn't add new attack surface the way Milestone 10 did
-(new public repo, new federated trust relationship); it's a storage-sizing
-and scheduler-accounting cleanup on infrastructure that already exists.
+Not relevant this session: `bigquery-data-analytics`, `mongodb` (beyond
+whatever the PVC-resize automation touches mechanically), `frontend-design`,
+`code-simplifier`, `warp`, `playwright`/`claude-in-chrome`.

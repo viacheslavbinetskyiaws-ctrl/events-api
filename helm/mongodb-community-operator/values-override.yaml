@@ -5,8 +5,9 @@ operator:
   # operator's real observed memory usage (16Mi, confirmed live via
   # `kubectl top pod` during the Milestone 9 session) — a meaningful,
   # avoidable chunk of a genuinely tight 4-node fleet reserved for a
-  # lightweight controller.
+  # lightweight controller. Trimmed further (64Mi -> 48Mi -> 32Mi) during
+  # the Milestone 11 capacity crunch, still ~2x real usage (15-19Mi).
   resources:
     requests:
       cpu: 100m
-      memory: 64Mi
+      memory: 32Mi

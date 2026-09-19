@@ -21,6 +21,16 @@ spec:
     slot.name: debezium_tenant_accounts
     publication.name: dbz_tenant_accounts_publication
     publication.autocreate.mode: disabled
+    # tenant_accounts changes rarely (admin actions only), but WAL is
+    # global — unrelated high-traffic writes to `events` keep advancing
+    # the server's WAL position while this slot's own confirmed_flush_lsn
+    # stays frozen at its last real write, silently accumulating retained
+    # WAL (confirmed live: 2.9GB after one session's worth of unrelated
+    # events/dbt activity). The heartbeat sends a periodic replication
+    # protocol keepalive, letting confirmed_flush_lsn/restart_lsn advance
+    # even with zero real tenant_accounts writes — no extra DB permissions
+    # needed, it's part of the replication protocol, not an SQL write.
+    heartbeat.interval.ms: "60000"
     key.converter: org.apache.kafka.connect.json.JsonConverter
     key.converter.schemas.enable: "false"
     value.converter: org.apache.kafka.connect.json.JsonConverter
@@ -49,6 +59,10 @@ spec:
     slot.name: debezium_events
     publication.name: dbz_events_publication
     publication.autocreate.mode: disabled
+    # Same heartbeat fix applied for consistency, not because this slot has
+    # shown the lag problem yet — real production practice is to apply it
+    # uniformly to every connector rather than reactively per-symptom.
+    heartbeat.interval.ms: "60000"
     key.converter: org.apache.kafka.connect.json.JsonConverter
     key.converter.schemas.enable: "false"
     value.converter: org.apache.kafka.connect.json.JsonConverter

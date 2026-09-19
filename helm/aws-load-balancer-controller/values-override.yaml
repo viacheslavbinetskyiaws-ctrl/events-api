@@ -22,12 +22,13 @@ vpcTags:
 
 # The chart leaves this completely unbounded (resources: {}) if unset,
 # which would silently defeat the memory-accounting discipline the rest of
-# this project's pods depend on. Based on real observed usage (~39Mi),
-# confirmed live during the Milestone 9 session.
+# this project's pods depend on. Based on real observed usage (~39-48Mi,
+# confirmed live during the Milestone 9 and Milestone 11 sessions). Trimmed
+# further (128Mi -> 96Mi -> 72Mi) during the Milestone 11 capacity crunch.
 resources:
   requests:
     cpu: 100m
-    memory: 128Mi
+    memory: 72Mi
   limits:
     cpu: 200m
-    memory: 256Mi
+    memory: 192Mi

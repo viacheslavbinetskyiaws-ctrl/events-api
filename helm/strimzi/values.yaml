@@ -1,2 +1,16 @@
 watchNamespaces:
   - events-api
+
+# Chart default (384Mi request/limit) is close to real observed usage
+# (318Mi, confirmed live via `kubectl top pod` during the Milestone 11
+# capacity crunch) — trimmed the request modestly (384Mi -> 350Mi) to free
+# a bit of real room on a genuinely tight 4-node fleet; limit left
+# unchanged so the operator still has real burst headroom above its own
+# steady-state usage.
+resources:
+  requests:
+    memory: 350Mi
+    cpu: 200m
+  limits:
+    memory: 384Mi
+    cpu: 1000m
