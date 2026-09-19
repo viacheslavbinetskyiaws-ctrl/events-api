@@ -284,6 +284,64 @@ resource "aws_eks_addon" "ebs_csi" {
 
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
+
+  # Chart/addon defaults (40Mi per sidecar, 32Mi for liveness-probe /
+  # node-driver-registrar) run 2-4x real observed usage (10-22Mi, confirmed
+  # live via `kubectl top pod` during the Milestone 11 capacity crunch)
+  # across 6 controller-pod containers x2 replicas + 3 node-pod containers
+  # x4 nodes — real, avoidable room on a genuinely tight 4-node fleet.
+  configuration_values = jsonencode({
+    controller = {
+      resources = {
+        requests = { cpu = "10m", memory = "32Mi" }
+        limits   = { cpu = "100m", memory = "128Mi" }
+      }
+    }
+    node = {
+      resources = {
+        requests = { cpu = "10m", memory = "24Mi" }
+        limits   = { cpu = "100m", memory = "128Mi" }
+      }
+    }
+    sidecars = {
+      attacher = {
+        resources = {
+          requests = { cpu = "10m", memory = "24Mi" }
+          limits   = { cpu = "50m", memory = "128Mi" }
+        }
+      }
+      provisioner = {
+        resources = {
+          requests = { cpu = "10m", memory = "24Mi" }
+          limits   = { cpu = "50m", memory = "128Mi" }
+        }
+      }
+      resizer = {
+        resources = {
+          requests = { cpu = "10m", memory = "24Mi" }
+          limits   = { cpu = "50m", memory = "128Mi" }
+        }
+      }
+      snapshotter = {
+        resources = {
+          requests = { cpu = "10m", memory = "24Mi" }
+          limits   = { cpu = "50m", memory = "128Mi" }
+        }
+      }
+      livenessProbe = {
+        resources = {
+          requests = { cpu = "10m", memory = "16Mi" }
+          limits   = { cpu = "50m", memory = "32Mi" }
+        }
+      }
+      nodeDriverRegistrar = {
+        resources = {
+          requests = { cpu = "10m", memory = "16Mi" }
+          limits   = { cpu = "50m", memory = "32Mi" }
+        }
+      }
+    }
+  })
 }
 
 resource "aws_eks_addon" "vpc_cni" {

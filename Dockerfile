@@ -74,6 +74,10 @@ FROM builder AS builder-dbt
 
 RUN uv sync --no-dev --frozen --extra dbt
 COPY dbt ./dbt
+# dbt_packages/ is gitignored (vendored, not source) — a fresh checkout
+# (any CI build included) never has it, so it must be installed here, not
+# assumed present from a developer's local `dbt deps` run.
+RUN cd dbt && uv run --extra dbt dbt deps
 
 FROM python:3.14-slim AS runtime-dbt
 

@@ -6,10 +6,13 @@
 args:
   - --kubelet-insecure-tls
 
+# Chart default (100m/200Mi request) is ~7x real observed usage (29Mi,
+# confirmed live via `kubectl top pod` during the Milestone 11 capacity
+# crunch) — trimmed to free real room on a genuinely tight 4-node fleet.
 resources:
   requests:
     cpu: 100m
-    memory: 200Mi
+    memory: 48Mi
   limits:
     cpu: 200m
-    memory: 400Mi
+    memory: 128Mi

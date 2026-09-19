@@ -34,3 +34,6 @@ kubeconfig*.yaml
 .vscode/
 realtime/node_modules
 realtime/dist
+
+.claude
+.mcp.json

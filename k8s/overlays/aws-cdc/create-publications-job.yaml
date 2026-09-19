@@ -7,17 +7,28 @@ spec:
   backoffLimit: 3
   template:
     spec:
+      serviceAccountName: events-api-migrate
       restartPolicy: OnFailure
+      initContainers:
+        - name: generate-iam-token
+          image: public.ecr.aws/aws-cli/aws-cli:latest
+          command:
+            [
+              "sh",
+              "-c",
+              "aws rds generate-db-auth-token --hostname events-api-db.choe4u6ye3yf.eu-central-1.rds.amazonaws.com --port 5432 --username events --region eu-central-1 > /shared/pgpassword",
+            ]
+          volumeMounts:
+            - name: shared-token
+              mountPath: /shared
       containers:
         - name: create-publications
           image: postgres:18
           command:
             [
-              "psql",
-              "-v",
-              "ON_ERROR_STOP=1",
-              "-f",
-              "/scripts/create-publications.sql",
+              "sh",
+              "-c",
+              "export PGPASSWORD=$(cat /shared/pgpassword) && psql -v ON_ERROR_STOP=1 -f /scripts/create-publications.sql",
             ]
           env:
             - name: PGHOST
@@ -28,15 +39,14 @@ spec:
               value: events
             - name: PGSSLMODE
               value: require
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: rds-master-credentials
-                  key: password
           volumeMounts:
             - name: setup-scripts
               mountPath: /scripts
+            - name: shared-token
+              mountPath: /shared
       volumes:
         - name: setup-scripts
           configMap:
             name: aws-cdc-publications-sql
+        - name: shared-token
+          emptyDir: {}
