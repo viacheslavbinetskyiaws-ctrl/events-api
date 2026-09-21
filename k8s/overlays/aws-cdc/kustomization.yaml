@@ -1,20 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# INTERMEDIATE overlay (chained by aws-realtime): never apply directly. Kafka
+# Connect, the connectors and cdc-consumer live in aws-connect because they
+# read Secrets that only exist after the database bootstrap and the Mongo
+# operator have run; the publications Job lives in aws-bootstrap.
 resources:
   - ../aws
   - storage-class.yaml
   - kafka-cluster.yaml
-  - kafka-connect.yaml
-  - kafka-connectors.yaml
   - mongodb-community.yaml
-  - consumer-deployment.yaml
-  - create-publications-job.yaml
-  - gcp-wif-credential-config.yaml
-  - bigquery-connectors.yaml
-
-configMapGenerator:
-  - name: aws-cdc-publications-sql
-    namespace: events-api
-    files:
-      - scripts/create-publications.sql

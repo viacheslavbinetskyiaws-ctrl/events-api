@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Standalone leaf overlay. Every Job here is created suspended; the platform
+# script releases them in dependency order after the events-api-migrate Job
+# (from the aws overlay), which sits between bootstrap-master and
+# bootstrap-roles in that order.
+resources:
+  - service-accounts.yaml
+  - job-bootstrap-master.yaml
+  - job-bootstrap-roles.yaml
+  - create-publications-job.yaml
+
+configMapGenerator:
+  - name: bootstrap-scripts
+    namespace: events-api
+    files:
+      - scripts/bootstrap_master.py
+      - scripts/bootstrap_roles.py
+  - name: aws-cdc-publications-sql
+    namespace: events-api
+    files:
+      - scripts/create-publications.sql
+
+components:
+  - ../../components/cluster-config-source
+  - ../../components/cluster-config-replacements

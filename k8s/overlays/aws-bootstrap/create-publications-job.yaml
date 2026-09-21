@@ -4,6 +4,7 @@ metadata:
   name: aws-cdc-create-publications
   namespace: events-api
 spec:
+  suspend: true
   backoffLimit: 3
   template:
     spec:
@@ -13,11 +14,18 @@ spec:
         - name: generate-iam-token
           image: public.ecr.aws/aws-cli/aws-cli:latest
           command:
-            [
-              "sh",
-              "-c",
-              "aws rds generate-db-auth-token --hostname events-api-db.choe4u6ye3yf.eu-central-1.rds.amazonaws.com --port 5432 --username events --region eu-central-1 > /shared/pgpassword",
-            ]
+            - sh
+            - -c
+            - aws rds generate-db-auth-token --hostname "$PGHOST" --port 5432 --username events --region "$AWS_REGION" > /shared/pgpassword
+          envFrom:
+            - configMapRef:
+                name: cluster-config
+          env:
+            - name: PGHOST
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: RDS_HOST
           volumeMounts:
             - name: shared-token
               mountPath: /shared
@@ -25,14 +33,15 @@ spec:
         - name: create-publications
           image: postgres:18
           command:
-            [
-              "sh",
-              "-c",
-              "export PGPASSWORD=$(cat /shared/pgpassword) && psql -v ON_ERROR_STOP=1 -f /scripts/create-publications.sql",
-            ]
+            - sh
+            - -c
+            - export PGPASSWORD=$(cat /shared/pgpassword) && psql -v ON_ERROR_STOP=1 -f /scripts/create-publications.sql
           env:
             - name: PGHOST
-              value: events-api-db.choe4u6ye3yf.eu-central-1.rds.amazonaws.com
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: RDS_HOST
             - name: PGUSER
               value: events
             - name: PGDATABASE
