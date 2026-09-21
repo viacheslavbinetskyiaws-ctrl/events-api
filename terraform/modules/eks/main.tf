@@ -201,8 +201,12 @@ resource "aws_eks_access_entry" "creator" {
 }
 
 resource "aws_eks_access_policy_association" "creator_admin" {
-  cluster_name  = aws_eks_cluster.this.name
-  principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/terraform-events-api"
+  cluster_name = aws_eks_cluster.this.name
+  # Reference the entry's attribute, not a repeated literal: that creates the
+  # dependency edge. With a literal, Terraform created the association in
+  # parallel with the entry and AssociateAccessPolicy failed with a 404 on a
+  # from-scratch apply.
+  principal_arn = aws_eks_access_entry.creator.principal_arn
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 
   access_scope {
@@ -216,8 +220,9 @@ resource "aws_eks_access_entry" "root" {
 }
 
 resource "aws_eks_access_policy_association" "root_admin" {
-  cluster_name  = aws_eks_cluster.this.name
-  principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+  cluster_name = aws_eks_cluster.this.name
+  # Same fix as creator_admin: depend on the entry, not a repeated literal.
+  principal_arn = aws_eks_access_entry.root.principal_arn
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 
   access_scope {
