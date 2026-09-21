@@ -18,3 +18,8 @@ variable "k8s_viewer_role_arn" {
 variable "github_deploy_role_arn" {
   type = string
 }
+
+variable "bootstrap_role_arn" {
+  type        = string
+  description = "GitHub OIDC bootstrap role: granted EKS cluster-admin so cluster-up/down can install Helm charts and apply manifests"
+}
