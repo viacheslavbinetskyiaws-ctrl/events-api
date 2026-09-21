@@ -14,6 +14,9 @@ SCRIPT = (
 
 def load_script():
     spec = importlib.util.spec_from_file_location("bootstrap_roles", SCRIPT)
+    # Both are Optional in the stdlib's typing; assert so a moved script fails
+    # here with a clear message and the type checker can narrow them.
+    assert spec is not None and spec.loader is not None, f"cannot load {SCRIPT}"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
