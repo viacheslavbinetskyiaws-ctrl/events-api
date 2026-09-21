@@ -117,7 +117,7 @@ chmod +x scripts/cluster/check-render.sh
 - [ ] **Step 2: Run it and watch it fail**
 
 ```bash
-scripts/cluster/check-render.sh aws aws-dbt aws-alb-controller aws-observability
+scripts/cluster/check-render.sh aws-dbt aws-alb-controller aws-observability
 ```
 Expected: `FAIL` lines showing `938500344309` (and `choe4u6ye3yf`/`eu-central-1` for `aws` and `aws-dbt`), because the manifests still hold real values. (Earlier grep: 11 account-ID and 6 RDS-host occurrences across the tree.)
 
@@ -313,16 +313,23 @@ Append to `.gitignore`:
 k8s/components/cluster-config-source/cluster-config.env
 ```
 
-- [ ] **Step 5: Wire the components into the overlays**
+- [ ] **Step 5: Wire the components into the LEAF overlays**
 
-`k8s/overlays/aws/kustomization.yaml`: add at the end
+**Rule (found the hard way while executing this task):** include both components in every **leaf** overlay, the ones that are actually applied, and **never in an intermediate overlay such as `aws` that patches resources.** A component's replacements run *before* the including overlay's own `patches`. Put them in `aws` and the replacement targeting `data.APP_DB_HOST` runs before `app-configmap-patch.yaml` has added that key, and the build fails with `unable to find field "data.APP_DB_HOST" in replacement target` (the base ConfigMap has no such key). Verified with a scratch experiment: components in the leaf `aws-dbt` build fine, and every value lands. Consequences:
+- `aws` and `aws-cdc` are **intermediate**: never apply them directly, and do not list them in `check-render.sh`.
+- Every leaf lists **both** components: `aws-dbt`, `aws-realtime`, `aws-observability`, `aws-alb-controller` here, and the new standalone overlays later.
+
+`k8s/overlays/aws/kustomization.yaml`: **no components.** Add this header comment above `resources:` so nobody applies it directly:
 ```yaml
-
-components:
-  - ../../components/cluster-config-source
-  - ../../components/cluster-config-replacements
+# INTERMEDIATE overlay: never apply this one directly. It still holds the
+# invalid sentinels for the account ID, registry, RDS host and region. The
+# cluster-config components live in the LEAF overlays that chain through this
+# one (aws-dbt, aws-realtime, aws-observability, ...), because a component's
+# replacements run before the including overlay's own patches: put them here
+# and they would run before app-configmap-patch.yaml has added the very keys
+# they need to overwrite.
 ```
-`k8s/overlays/aws-dbt/kustomization.yaml` (its `aws` base already carries the source; this overlay adds its own targets):
+`k8s/overlays/aws-dbt/kustomization.yaml`:
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -333,6 +340,7 @@ resources:
   - dbt-cronjob.yaml
 
 components:
+  - ../../components/cluster-config-source
   - ../../components/cluster-config-replacements
 ```
 `k8s/overlays/aws-realtime/kustomization.yaml`:
@@ -346,6 +354,21 @@ resources:
   - service.yaml
 
 components:
+  - ../../components/cluster-config-source
+  - ../../components/cluster-config-replacements
+```
+`k8s/overlays/aws-observability/kustomization.yaml`:
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../aws
+  - service-monitor.yaml
+  - grafana-dashboard-configmap.yaml
+
+components:
+  - ../../components/cluster-config-source
   - ../../components/cluster-config-replacements
 ```
 `k8s/overlays/aws-alb-controller/kustomization.yaml` (standalone: needs both):
@@ -420,9 +443,9 @@ spec:
 - [ ] **Step 7: Run the check and watch it pass**
 
 ```bash
-scripts/cluster/check-render.sh aws aws-dbt aws-alb-controller aws-observability
+scripts/cluster/check-render.sh aws-dbt aws-alb-controller aws-observability
 ```
-Acceptance: four `ok` lines, exit code 0. Then confirm the substitution really happened (not merely that nothing bad survived):
+Acceptance: three `ok` lines (`aws-dbt`, `aws-alb-controller`, `aws-observability`), exit code 0. Then confirm the substitution really happened (not merely that nothing bad survived):
 ```bash
 mkdir -p /tmp/kcheck && cp -R k8s /tmp/kcheck/ && cp scripts/cluster/sample-cluster-config.env /tmp/kcheck/k8s/components/cluster-config-source/cluster-config.env
 kubectl kustomize /tmp/kcheck/k8s/overlays/aws-dbt | grep -nE 'role-arn|image:|APP_DB_HOST|APP_AWS_REGION|DBT_HOST' ; rm -rf /tmp/kcheck
@@ -500,9 +523,9 @@ components:
 - [ ] **Step 3: Check**
 
 ```bash
-scripts/cluster/check-render.sh aws aws-cdc aws-connect aws-dbt aws-realtime aws-observability aws-alb-controller
+scripts/cluster/check-render.sh aws-connect aws-dbt aws-realtime aws-observability aws-alb-controller
 ```
-Acceptance: seven `ok` lines. (`aws-bootstrap` has no kustomization yet and is not checked.)
+Acceptance: five `ok` lines (leaves only: `aws` and `aws-cdc` are intermediate). (`aws-bootstrap` has no kustomization yet and is not checked.)
 
 - [ ] **Step 4: Checkpoint (user runs)**
 

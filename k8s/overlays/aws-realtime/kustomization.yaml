@@ -5,3 +5,7 @@ resources:
   - ../aws-cdc
   - deployment.yaml
   - service.yaml
+
+components:
+  - ../../components/cluster-config-source
+  - ../../components/cluster-config-replacements

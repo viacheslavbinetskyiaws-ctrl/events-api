@@ -1,6 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# INTERMEDIATE overlay: never apply this one directly. It still holds the
+# invalid sentinels for the account ID, registry, RDS host and region. The
+# cluster-config components live in the LEAF overlays that chain through this
+# one (aws-dbt, aws-realtime, aws-observability, ...), because a component's
+# replacements run before the including overlay's own patches: put them here
+# and they would run before app-configmap-patch.yaml has added the very keys
+# they need to overwrite.
 resources:
   - ../../base
   - service-account.yaml

@@ -9,7 +9,7 @@ spec:
       serviceAccountName: events-api-app
       containers:
         - name: events-api
-          image: 938500344309.dkr.ecr.eu-central-1.amazonaws.com/events-api-app:latest
+          image: registry.placeholder.invalid/events-api-app:latest
           imagePullPolicy: Always
           envFrom:
             - configMapRef:

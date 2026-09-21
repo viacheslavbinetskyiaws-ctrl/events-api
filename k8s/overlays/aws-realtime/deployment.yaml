@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: realtime
-          image: 938500344309.dkr.ecr.eu-central-1.amazonaws.com/events-api-realtime:latest
+          image: registry.placeholder.invalid/events-api-realtime:latest
           imagePullPolicy: Always
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS

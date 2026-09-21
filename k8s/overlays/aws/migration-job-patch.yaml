@@ -4,12 +4,16 @@ metadata:
   name: events-api-migrate
   namespace: events-api
 spec:
+  # Created suspended: the bootstrap script releases it only after the first
+  # `GRANT rds_iam TO events` has landed (a fresh RDS owner role cannot use IAM
+  # auth before that), so it can never run too early.
+  suspend: true
   template:
     spec:
       serviceAccountName: events-api-migrate
       containers:
         - name: migrate
-          image: 938500344309.dkr.ecr.eu-central-1.amazonaws.com/events-api-app:latest
+          image: registry.placeholder.invalid/events-api-app:latest
           imagePullPolicy: Always
           envFrom:
             - configMapRef:
