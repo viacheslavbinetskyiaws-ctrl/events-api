@@ -1,0 +1,15 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: events-data-plane
+# Above every default-priority (0) pod, far below the system classes
+# (system-cluster-critical is 2000000000). Lets the Kafka broker preempt one
+# small lower-value pod when arrival order has fragmented the free memory on
+# these small nodes. Found on a cold start: the 720Mi broker stayed Pending
+# ("3 Insufficient memory ... Preemption is not helpful") while 1.4Gi was free
+# in total, because Prometheus, Grafana and the operators had landed first and
+# nothing could displace them.
+value: 1000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: The CDC data plane (the Kafka broker) outranks observability and other default-priority pods.

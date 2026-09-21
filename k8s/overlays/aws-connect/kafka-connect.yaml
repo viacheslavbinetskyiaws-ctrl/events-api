@@ -6,7 +6,7 @@ metadata:
   annotations:
     strimzi.io/use-connector-resources: "true"
 spec:
-  image: 938500344309.dkr.ecr.eu-central-1.amazonaws.com/events-api-kafka-connect:latest
+  image: registry.placeholder.invalid/events-api-kafka-connect:latest
   replicas: 1
   bootstrapServers: events-kafka-bootstrap:9092
   groupId: events-connect-cluster
@@ -23,7 +23,7 @@ spec:
     serviceAccount:
       metadata:
         annotations:
-          eks.amazonaws.com/role-arn: arn:aws:iam::938500344309:role/events-api-iam-kafka-connect-gcp-irsa
+          eks.amazonaws.com/role-arn: arn:aws:iam::000000000000:role/events-api-iam-kafka-connect-gcp-irsa
     connectContainer:
       env:
         - name: DEBEZIUM_DB_PASSWORD

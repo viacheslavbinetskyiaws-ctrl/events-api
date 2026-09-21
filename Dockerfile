@@ -87,6 +87,14 @@ WORKDIR /app/dbt
 COPY --from=builder-dbt --chown=appuser:appuser /usr/local /usr/local
 COPY --from=builder-dbt --chown=appuser:appuser /app/dbt ./
 
+# WORKDIR creates /app/dbt as root, and COPY --chown only owns the files it
+# copies, not the directory itself. dbt must create target/ (and logs/) inside
+# it at runtime, which appuser was denied on any image built from a fresh
+# checkout: target/ is gitignored, so it is never copied in. A build on a
+# developer's machine hid this because a leftover local dbt/target/ folder
+# came along with the COPY and arrived owned by appuser.
+RUN chown appuser:appuser /app/dbt
+
 USER appuser
 
 CMD ["sh", "scripts/run_and_publish.sh"]

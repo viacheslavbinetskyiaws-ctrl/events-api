@@ -3,3 +3,7 @@ kind: Kustomization
 
 resources:
   - service-account.yaml
+
+components:
+  - ../../components/cluster-config-source
+  - ../../components/cluster-config-replacements

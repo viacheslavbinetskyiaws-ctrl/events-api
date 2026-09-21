@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: events-api-bootstrap-master
+  namespace: events-api
+spec:
+  # Applied suspended and released by scripts/cluster/platform-up.sh in
+  # dependency order (this -> migration -> bootstrap-roles -> publications).
+  suspend: true
+  backoffLimit: 4
+  activeDeadlineSeconds: 900
+  template:
+    spec:
+      serviceAccountName: events-api-bootstrap-master
+      restartPolicy: Never
+      containers:
+        - name: bootstrap-master
+          image: registry.placeholder.invalid/events-api-app:latest
+          imagePullPolicy: Always
+          command: ["python", "/scripts/bootstrap_master.py"]
+          envFrom:
+            - configMapRef:
+                name: cluster-config
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+          # Sized by estimate (boto3 + asyncpg, short-lived); check
+          # `kubectl top` / OOMKilled on the first real run and adjust.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi
+      volumes:
+        - name: scripts
+          configMap:
+            name: bootstrap-scripts

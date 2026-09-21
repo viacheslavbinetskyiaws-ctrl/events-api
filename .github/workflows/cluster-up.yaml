@@ -1,0 +1,80 @@
+name: Cluster up
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# One lifecycle run at a time: up and down must never overlap.
+concurrency:
+  group: cluster-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  infra:
+    runs-on: ubuntu-latest
+    environment: aws-infra
+    timeout-minutes: 90
+    outputs:
+      account_id: ${{ steps.out.outputs.account_id }}
+      region: ${{ steps.out.outputs.region }}
+      cluster_name: ${{ steps.out.outputs.cluster_name }}
+      rds_host: ${{ steps.out.outputs.rds_host }}
+      rds_master_secret_arn: ${{ steps.out.outputs.rds_master_secret_arn }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+          # The wrapper changes stdout handling; `terraform output -raw` below
+          # must be a clean value.
+          terraform_wrapper: false
+      - name: Apply the cluster root
+        run: |
+          cd terraform/cluster
+          terraform init
+          terraform apply -auto-approve
+      - name: Export non-secret outputs for the platform job
+        id: out
+        run: |
+          cd terraform/cluster
+          {
+            echo "account_id=$(terraform output -raw account_id)"
+            echo "region=$(terraform output -raw region)"
+            echo "cluster_name=$(terraform output -raw cluster_name)"
+            echo "rds_host=$(terraform output -raw rds_address)"
+            echo "rds_master_secret_arn=$(terraform output -raw rds_master_user_secret_arn)"
+          } >> "${GITHUB_OUTPUT}"
+
+  platform:
+    needs: infra
+    runs-on: ubuntu-latest
+    # No `environment:` on purpose: the bootstrap role trusts the main-branch
+    # sub claim only, which a job without an environment presents.
+    timeout-minutes: 150
+    env:
+      ACCOUNT_ID: ${{ needs.infra.outputs.account_id }}
+      AWS_REGION: ${{ needs.infra.outputs.region }}
+      CLUSTER_NAME: ${{ needs.infra.outputs.cluster_name }}
+      RDS_HOST: ${{ needs.infra.outputs.rds_host }}
+      RDS_MASTER_SECRET_ARN: ${{ needs.infra.outputs.rds_master_secret_arn }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_BOOTSTRAP_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Tool versions (helm and kubectl come from the runner image)
+        run: |
+          helm version --short
+          kubectl version --client
+      - name: Point kubectl at the new cluster
+        run: aws eks update-kubeconfig --name "${CLUSTER_NAME}" --region "${AWS_REGION}"
+      - name: Bring up the platform
+        run: scripts/cluster/platform-up.sh

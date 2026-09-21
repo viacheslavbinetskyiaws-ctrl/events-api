@@ -37,3 +37,6 @@ realtime/dist
 
 .claude
 .mcp.json
+
+# Generated per cluster from Terraform outputs; never committed
+k8s/components/cluster-config-source/cluster-config.env

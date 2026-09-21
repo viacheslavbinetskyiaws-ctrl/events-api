@@ -5,3 +5,7 @@ resources:
   - ../aws
   - service-account.yaml
   - dbt-cronjob.yaml
+
+components:
+  - ../../components/cluster-config-source
+  - ../../components/cluster-config-replacements

@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: events-api-seed
+  namespace: events-api
+spec:
+  # No ttlSecondsAfterFinished: a *succeeded* seed Job is what makes a
+  # re-dispatched `up` skip seeding. A failed one is deleted and recreated by
+  # stage_seed, so a failure never blocks later runs.
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: registry.placeholder.invalid/events-api-app:latest
+          imagePullPolicy: Always
+          command: ["python", "/scripts/seed.py"]
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+      volumes:
+        - name: scripts
+          configMap:
+            name: seed-scripts

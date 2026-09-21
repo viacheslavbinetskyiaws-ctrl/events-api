@@ -16,7 +16,7 @@ spec:
       serviceAccountName: events-api-app
       containers:
         - name: cdc-consumer
-          image: 938500344309.dkr.ecr.eu-central-1.amazonaws.com/events-api-streaming:latest
+          image: registry.placeholder.invalid/events-api-streaming:latest
           imagePullPolicy: Always
           env:
             - name: STREAMING_KAFKA_BOOTSTRAP_SERVERS

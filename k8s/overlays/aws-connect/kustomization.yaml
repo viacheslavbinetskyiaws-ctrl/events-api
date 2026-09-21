@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Standalone leaf overlay: needs only the namespace, the events-api-app
+# ServiceAccount and the events-api-config ConfigMap, which the platform
+# script has already applied by the time this one is. Applied AFTER the
+# debezium-db-credentials and streaming-mongo-credentials Secrets exist, so
+# Kafka Connect and cdc-consumer never start without them.
+resources:
+  - gcp-wif-credential-config.yaml
+  - kafka-connect.yaml
+  - kafka-connectors.yaml
+  - bigquery-connectors.yaml
+  - consumer-deployment.yaml
+
+components:
+  - ../../components/cluster-config-source
+  - ../../components/cluster-config-replacements

@@ -1,0 +1,89 @@
+name: Cluster down
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cluster-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  platform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_BOOTSTRAP_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Does the cluster exist?
+        id: exists
+        run: |
+          if aws eks describe-cluster --name "${CLUSTER_NAME}" >/dev/null 2>&1; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+            echo "No cluster: skipping Kubernetes teardown."
+          fi
+      - name: Point kubectl at the cluster
+        if: steps.exists.outputs.exists == 'true'
+        run: aws eks update-kubeconfig --name "${CLUSTER_NAME}" --region "${AWS_REGION}"
+      - name: Tear down the Kubernetes side
+        if: steps.exists.outputs.exists == 'true'
+        run: scripts/cluster/platform-down.sh
+
+  infra:
+    needs: platform
+    runs-on: ubuntu-latest
+    environment: aws-infra
+    timeout-minutes: 90
+    env:
+      CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+      - name: Refuse to destroy while an ALB still belongs to the cluster
+        run: |
+          for arn in $(aws elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerArn' --output text); do
+            owner=$(aws elbv2 describe-tags --resource-arns "${arn}" \
+              --query 'TagDescriptions[0].Tags[?Key==`elbv2.k8s.aws/cluster`].Value | [0]' --output text)
+            if [ "${owner}" = "${CLUSTER_NAME}" ]; then
+              echo "ALB ${arn} still belongs to ${CLUSTER_NAME}; it would be orphaned." >&2
+              exit 1
+            fi
+          done
+      - name: Destroy the cluster root
+        run: |
+          cd terraform/cluster
+          terraform init
+          terraform destroy -auto-approve
+      - name: Assert nothing billable was orphaned
+        # ASSUMPTION: this account holds only this project, so the load
+        # balancer / NAT / EKS / RDS checks below are account-wide. If anything
+        # else ever lives here, filter them by tag like the EBS check does.
+        run: |
+          fail=0
+          check() { # check <description> <command output>
+            if [ -n "$2" ] && [ "$2" != "None" ]; then echo "LEFTOVER $1: $2" >&2; fail=1; fi
+          }
+          check "cluster EBS volumes" "$(aws ec2 describe-volumes --filters "Name=tag:kubernetes.io/cluster/${CLUSTER_NAME},Values=owned" --query 'Volumes[].VolumeId' --output text)"
+          check "load balancers" "$(aws elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerName' --output text)"
+          check "NAT gateways" "$(aws ec2 describe-nat-gateways --filter Name=state,Values=available,pending --query 'NatGateways[].NatGatewayId' --output text)"
+          check "EKS clusters" "$(aws eks list-clusters --query 'clusters' --output text)"
+          check "RDS instances" "$(aws rds describe-db-instances --query 'DBInstances[].DBInstanceIdentifier' --output text)"
+          exit ${fail}

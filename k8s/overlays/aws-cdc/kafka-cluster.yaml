@@ -10,6 +10,9 @@ spec:
   roles:
     - controller
     - broker
+  template:
+    pod:
+      priorityClassName: events-data-plane
   resources:
     requests:
       cpu: 250m

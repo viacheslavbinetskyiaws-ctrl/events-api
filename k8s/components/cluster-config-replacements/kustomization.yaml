@@ -1,0 +1,162 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+# Overwrites every infrastructure-specific value in the manifests with the
+# real one from the generated `cluster-config` ConfigMap. The literals left in
+# the manifests are deliberately invalid sentinels (000000000000,
+# registry.placeholder.invalid, rds.placeholder.invalid, placeholder-region),
+# so an unreplaced site fails loudly instead of quietly pointing at old
+# infrastructure. scripts/cluster/check-render.sh enforces that none survive.
+#
+# Include this (together with cluster-config-source) in every LEAF overlay,
+# the ones that are actually applied. Never in an intermediate overlay such as
+# `aws` that patches resources: a component's replacements run BEFORE the
+# including overlay's own patches, so a target field that a patch adds (e.g.
+# APP_DB_HOST) does not exist yet and the build fails with "unable to find
+# field". Selectors that match nothing in a given overlay are harmless.
+replacements:
+  # IAM role ARNs: replace the account-ID segment of arn:aws:iam::<account>:role/...
+  - source:
+      kind: ConfigMap
+      name: cluster-config
+      fieldPath: data.ACCOUNT_ID
+    targets:
+      - select:
+          kind: ServiceAccount
+          annotationSelector: eks.amazonaws.com/role-arn
+        fieldPaths:
+          - metadata.annotations.[eks.amazonaws.com/role-arn]
+        options:
+          delimiter: ":"
+          index: 4
+      - select:
+          kind: KafkaConnect
+          name: events-connect
+        fieldPaths:
+          - spec.template.serviceAccount.metadata.annotations.[eks.amazonaws.com/role-arn]
+        options:
+          delimiter: ":"
+          index: 4
+
+  # Image registry host: the segment before the first "/" of every ECR image.
+  - source:
+      kind: ConfigMap
+      name: cluster-config
+      fieldPath: data.ECR_REGISTRY
+    targets:
+      - select:
+          kind: Deployment
+          name: events-api
+        fieldPaths:
+          - spec.template.spec.containers.[name=events-api].image
+        options:
+          delimiter: "/"
+          index: 0
+      - select:
+          kind: Job
+          name: events-api-migrate
+        fieldPaths:
+          - spec.template.spec.containers.[name=migrate].image
+        options:
+          delimiter: "/"
+          index: 0
+      - select:
+          kind: Deployment
+          name: realtime
+        fieldPaths:
+          - spec.template.spec.containers.[name=realtime].image
+        options:
+          delimiter: "/"
+          index: 0
+      - select:
+          kind: Deployment
+          name: cdc-consumer
+        fieldPaths:
+          - spec.template.spec.containers.[name=cdc-consumer].image
+        options:
+          delimiter: "/"
+          index: 0
+      - select:
+          kind: CronJob
+          name: dbt-build
+        fieldPaths:
+          - spec.jobTemplate.spec.template.spec.containers.[name=dbt-build].image
+        options:
+          delimiter: "/"
+          index: 0
+      - select:
+          kind: KafkaConnect
+          name: events-connect
+        fieldPaths:
+          - spec.image
+        options:
+          delimiter: "/"
+          index: 0
+      - select:
+          kind: Job
+          name: events-api-bootstrap-master
+        fieldPaths:
+          - spec.template.spec.containers.[name=bootstrap-master].image
+        options:
+          delimiter: "/"
+          index: 0
+      - select:
+          kind: Job
+          name: events-api-bootstrap-roles
+        fieldPaths:
+          - spec.template.spec.containers.[name=bootstrap-roles].image
+        options:
+          delimiter: "/"
+          index: 0
+      - select:
+          kind: Job
+          name: events-api-seed
+        fieldPaths:
+          - spec.template.spec.containers.[name=seed].image
+        options:
+          delimiter: "/"
+          index: 0
+
+  # Database host, whole value.
+  - source:
+      kind: ConfigMap
+      name: cluster-config
+      fieldPath: data.RDS_HOST
+    targets:
+      - select:
+          kind: ConfigMap
+          name: events-api-config
+        fieldPaths:
+          - data.APP_DB_HOST
+      - select:
+          kind: CronJob
+          name: dbt-build
+        fieldPaths:
+          - spec.jobTemplate.spec.template.spec.containers.[name=dbt-build].env.[name=DBT_HOST].value
+      - select:
+          kind: KafkaConnector
+          name: tenant-accounts-connector
+        fieldPaths:
+          - spec.config.[database.hostname]
+      - select:
+          kind: KafkaConnector
+          name: events-connector
+        fieldPaths:
+          - spec.config.[database.hostname]
+
+  # Region, whole value.
+  - source:
+      kind: ConfigMap
+      name: cluster-config
+      fieldPath: data.AWS_REGION
+    targets:
+      - select:
+          kind: ConfigMap
+          name: events-api-config
+        fieldPaths:
+          - data.APP_AWS_REGION
+      - select:
+          kind: CronJob
+          name: dbt-build
+        fieldPaths:
+          - spec.jobTemplate.spec.template.spec.containers.[name=dbt-build].env.[name=APP_AWS_REGION].value

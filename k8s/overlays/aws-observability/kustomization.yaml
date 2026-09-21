@@ -5,3 +5,7 @@ resources:
   - ../aws
   - service-monitor.yaml
   - grafana-dashboard-configmap.yaml
+
+components:
+  - ../../components/cluster-config-source
+  - ../../components/cluster-config-replacements

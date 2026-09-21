@@ -5,8 +5,8 @@ metadata:
   namespace: events-api
 data:
   APP_ENVIRONMENT: aws
-  APP_DB_HOST: events-api-db.choe4u6ye3yf.eu-central-1.rds.amazonaws.com
+  APP_DB_HOST: rds.placeholder.invalid
   APP_DB_PORT: "5432"
   APP_DB_NAME: events
   APP_DB_USER: events_app
-  APP_AWS_REGION: eu-central-1
+  APP_AWS_REGION: placeholder-region
