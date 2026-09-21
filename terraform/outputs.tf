@@ -87,3 +87,13 @@ output "github_terraform_plan_role_arn" {
   description = "OIDC-federated, read-only role GitHub Actions assumes to run terraform plan on PRs"
   value       = module.github_oidc.terraform_plan_role_arn
 }
+
+output "github_bootstrap_role_arn" {
+  description = "OIDC-federated role GitHub Actions assumes for cluster-up/cluster-down Kubernetes work"
+  value       = module.github_oidc.bootstrap_role_arn
+}
+
+output "debezium_secret_arn" {
+  description = "Secrets Manager container for the debezium_replication password"
+  value       = aws_secretsmanager_secret.debezium.arn
+}
