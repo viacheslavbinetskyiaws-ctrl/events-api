@@ -7,6 +7,7 @@ kind: Kustomization
 # operator have run; the publications Job lives in aws-bootstrap.
 resources:
   - ../aws
+  - priority-class.yaml
   - storage-class.yaml
   - kafka-cluster.yaml
   - mongodb-community.yaml
