@@ -397,3 +397,20 @@ resource "aws_eks_addon" "kube_proxy" {
     }
   })
 }
+
+resource "aws_eks_access_entry" "bootstrap" {
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = var.bootstrap_role_arn
+}
+
+resource "aws_eks_access_policy_association" "bootstrap_admin" {
+  cluster_name = aws_eks_cluster.this.name
+  # Referencing the entry's attribute (not the variable) creates the
+  # dependency edge: the association API fails if the entry does not exist yet.
+  principal_arn = aws_eks_access_entry.bootstrap.principal_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+}

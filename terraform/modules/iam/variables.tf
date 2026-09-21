@@ -25,3 +25,11 @@ variable "rds_resource_id" {
 variable "rds_db_user" {
   type = string
 }
+
+variable "rds_master_secret_arn" {
+  type = string
+}
+
+variable "debezium_secret_arn" {
+  type = string
+}

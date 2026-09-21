@@ -869,15 +869,14 @@ output "bootstrap_roles_irsa_role_arn" {
 }
 ```
 
-- [ ] **Step 8: Init, lock for CI's platform, validate**
+- [ ] **Step 8: Init and validate**
 
 ```bash
 AWS_PROFILE=events-api-tf terraform -chdir=terraform/cluster init
-AWS_PROFILE=events-api-tf terraform -chdir=terraform/cluster providers lock -platform=linux_amd64 -platform=darwin_arm64
 terraform fmt -recursive terraform
 terraform -chdir=terraform/cluster validate
 ```
-Acceptance: `Success! The configuration is valid.` and `terraform/cluster/.terraform.lock.hcl` exists (CI runs on linux/amd64; the second command adds those hashes).
+Acceptance: `Success! The configuration is valid.` and `terraform/cluster/.terraform.lock.hcl` exists. No `providers lock -platform=...` step is needed: `init` records the registry's `zh:` release-zip hashes, which let any platform verify a freshly downloaded provider. Evidence: the foundation root's lock file holds one `h1:` hash (macOS) plus 16 `zh:` hashes and has worked in Linux CI since Milestone 10. Only if CI's `init` ever reports "doesn't match any of the checksums previously recorded" (typically a plugin cache or mirror) run `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64` in that root.
 
 - [ ] **Step 9: Plan the cluster root (do NOT apply)**
 
@@ -1476,11 +1475,7 @@ In `terraform/modules/github-oidc/main.tf`, extend the `terraform_plan_state_loc
 ```hcl
       "${var.state_bucket_arn}/events-api/gcp.tfstate.tflock",
 ```
-(the local-only bootstrap root is never planned in CI, so it needs no entry). Lock the gcp root's providers for CI's platform:
-```bash
-AWS_PROFILE=events-api-tf terraform -chdir=terraform/gcp providers lock -platform=linux_amd64 -platform=darwin_arm64
-```
-Also update the comment in `terraform/gcp/main.tf` to say the root is planned and applied by CI (Task 9) as well as locally.
+(the local-only bootstrap root is never planned in CI, so it needs no entry). No `providers lock` step is needed for the gcp root either (see Task 4 Step 8: `zh:` hashes cover Linux CI). Also update the comment in `terraform/gcp/main.tf` to say the root is planned and applied by CI (Task 9) as well as locally.
 
 - [ ] **Step 7: Verify the pin, then update `terraform.yaml`**
 

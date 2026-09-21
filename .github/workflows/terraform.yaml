@@ -4,6 +4,14 @@ on:
   pull_request:
     paths: ["terraform/**"]
   workflow_dispatch:
+    inputs:
+      stack:
+        description: Terraform root to apply
+        type: choice
+        options:
+          - foundation
+          - cluster
+        default: foundation
 
 permissions:
   contents: read
@@ -13,6 +21,14 @@ jobs:
   plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stack: foundation
+            dir: terraform
+          - stack: cluster
+            dir: terraform/cluster
     env:
       TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
       TF_VAR_use_locastack: "false"
@@ -26,7 +42,7 @@ jobs:
         with:
           terraform_version: "1.15.8"
       - run: |
-          cd terraform
+          cd ${{ matrix.dir }}
           terraform init
           terraform plan
 
@@ -47,6 +63,10 @@ jobs:
         with:
           terraform_version: "1.15.8"
       - run: |
-          cd terraform
+          if [ "${{ inputs.stack }}" = "cluster" ]; then
+            cd terraform/cluster
+          else
+            cd terraform
+          fi
           terraform init
           terraform apply -auto-approve

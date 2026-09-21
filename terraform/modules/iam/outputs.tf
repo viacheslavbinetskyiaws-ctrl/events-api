@@ -36,3 +36,11 @@ output "alb_controller_role_arn" {
   description = "IRSA role ARN for the AWS Load Balancer Controller's kube-system ServiceAccount"
   value       = aws_iam_role.alb_controller_irsa.arn
 }
+
+output "bootstrap_master_irsa_role_arn" {
+  value = aws_iam_role.bootstrap_master_irsa.arn
+}
+
+output "bootstrap_roles_irsa_role_arn" {
+  value = aws_iam_role.bootstrap_roles_irsa.arn
+}

@@ -287,3 +287,117 @@ resource "aws_iam_role_policy_attachment" "alb_controller_irsa" {
   role       = aws_iam_role.alb_controller_irsa.name
   policy_arn = aws_iam_policy.alb_contoroller.arn
 }
+
+# --- bootstrap Job 1: reads the RDS-managed master secret ---
+# The first `GRANT rds_iam TO events` on a fresh instance can only authenticate
+# with the master password. The secret uses the AWS-managed
+# aws/secretsmanager KMS key (verified 2026-09-19), so no kms:Decrypt
+# statement is included; if the first run proves one is needed, add it here.
+data "aws_iam_policy_document" "bootstrap_master_irsa_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [var.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:sub"
+      values   = ["system:serviceaccount:events-api:events-api-bootstrap-master"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "bootstrap_master_irsa" {
+  name               = "${var.name_prefix}-bootstrap-master-irsa"
+  assume_role_policy = data.aws_iam_policy_document.bootstrap_master_irsa_trust.json
+}
+
+data "aws_iam_policy_document" "bootstrap_master_secret" {
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [var.rds_master_secret_arn]
+  }
+}
+
+resource "aws_iam_policy" "bootstrap_master_secret" {
+  name   = "${var.name_prefix}-bootstrap-master-secret"
+  policy = data.aws_iam_policy_document.bootstrap_master_secret.json
+}
+
+resource "aws_iam_role_policy_attachment" "bootstrap_master_secret" {
+  role       = aws_iam_role.bootstrap_master_irsa.name
+  policy_arn = aws_iam_policy.bootstrap_master_secret.arn
+}
+
+# --- bootstrap Job 2: post-migration grants + the Debezium credential ---
+
+data "aws_iam_policy_document" "bootstrap_roles_irsa_trust" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [var.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:sub"
+      values   = ["system:serviceaccount:events-api:events-api-bootstrap-roles"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${var.oidc_provider_url}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "bootstrap_roles_irsa" {
+  name               = "${var.name_prefix}-bootstrap-roles-irsa"
+  assume_role_policy = data.aws_iam_policy_document.bootstrap_roles_irsa_trust.json
+}
+
+data "aws_iam_policy_document" "bootstrap_roles" {
+  # Connects as the owner role over IAM (its rds_iam grant landed in Job 1).
+  statement {
+    actions   = ["rds-db:connect"]
+    resources = ["arn:aws:rds-db:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:dbuser:${var.rds_resource_id}/events"]
+  }
+
+  # Scoped to the one secret: create the first value, read it back.
+  statement {
+    actions = [
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:PutSecretValue",
+    ]
+    resources = [var.debezium_secret_arn]
+  }
+
+  # GetRandomPassword does not support resource-level permissions.
+  statement {
+    actions   = ["secretsmanager:GetRandomPassword"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "bootstrap_roles" {
+  name   = "${var.name_prefix}-bootstrap-roles"
+  policy = data.aws_iam_policy_document.bootstrap_roles.json
+}
+
+resource "aws_iam_role_policy_attachment" "bootstrap_roles" {
+  role       = aws_iam_role.bootstrap_roles_irsa.name
+  policy_arn = aws_iam_policy.bootstrap_roles.arn
+}
