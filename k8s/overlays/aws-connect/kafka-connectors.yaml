@@ -8,6 +8,16 @@ metadata:
 spec:
   class: io.debezium.connector.postgresql.PostgresConnector
   tasksMax: 1
+  # A FAILED task never retries on its own (confirmed live: a task sat
+  # FAILED for over an hour after the replication slot it failed on had
+  # already been dropped and recreated) — Strimzi's own reconciliation must
+  # be told to retry it. Declarative rather than an imperative restart
+  # trigger in platform-up.sh: the operator watches for failures on every
+  # reconciliation (~2 min) and restarts on its own, so a self-healed
+  # upstream cause (e.g. a lost slot cleared by bootstrap-roles) is picked
+  # up without any script-side action.
+  autoRestart:
+    enabled: true
   config:
     database.hostname: rds.placeholder.invalid
     database.port: "5432"
@@ -46,6 +56,16 @@ metadata:
 spec:
   class: io.debezium.connector.postgresql.PostgresConnector
   tasksMax: 1
+  # A FAILED task never retries on its own (confirmed live: a task sat
+  # FAILED for over an hour after the replication slot it failed on had
+  # already been dropped and recreated) — Strimzi's own reconciliation must
+  # be told to retry it. Declarative rather than an imperative restart
+  # trigger in platform-up.sh: the operator watches for failures on every
+  # reconciliation (~2 min) and restarts on its own, so a self-healed
+  # upstream cause (e.g. a lost slot cleared by bootstrap-roles) is picked
+  # up without any script-side action.
+  autoRestart:
+    enabled: true
   config:
     database.hostname: rds.placeholder.invalid
     database.port: "5432"
