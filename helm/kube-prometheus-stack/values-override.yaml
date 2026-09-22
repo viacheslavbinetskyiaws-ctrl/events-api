@@ -27,6 +27,28 @@ prometheus:
         operator: Equal
         value: kafka-connect
         effect: NoSchedule
+    # Real bug found on a cold cluster-up (2026-09-22): the toleration above
+    # lets Prometheus land on Kafka Connect's own dedicated (single-node)
+    # node, and it landed there alongside Grafana — between the two of them
+    # plus DaemonSet overhead, that filled the node before Connect ever
+    # deployed (Helm installs before Connect does), leaving it Pending for
+    # hours. A PriorityClass fix on Connect (see aws-connect/kafka-connect.yaml)
+    # lets it preempt its way back on — but this constraint stops the two
+    # heavy monitoring pods from ever stacking onto the SAME node in the
+    # first place, so Connect finds room without needing to preempt at all.
+    # Verified: one of Grafana(448Mi)/Prometheus(382Mi) alone, plus ~200Mi of
+    # DaemonSets, plus Connect's 660Mi request, fits inside the node's 1365Mi
+    # allocatable; both together (1030Mi) did not leave enough room.
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            spread-group: kube-prometheus-stack-heavy
+    podMetadata:
+      labels:
+        spread-group: kube-prometheus-stack-heavy
     retention: 6h
     replicas: 1
     # Original 256Mi request was under real observed usage (312Mi, confirmed
@@ -72,6 +94,20 @@ grafana:
       operator: Equal
       value: kafka-connect
       effect: NoSchedule
+  # Same spread-group as prometheus.prometheusSpec above: prevents the two
+  # heavy monitoring pods stacking onto the same node (see that comment for
+  # the real bug this fixes). extraLabels feeds grafana's own pod template
+  # labels (confirmed against the chart's actual template source, not
+  # assumed), so topologySpreadConstraints' labelSelector can match both.
+  extraLabels:
+    spread-group: kube-prometheus-stack-heavy
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          spread-group: kube-prometheus-stack-heavy
   sidecar:
     # Real usage (confirmed live during the Milestone 11 capacity crunch:
     # 81-85Mi per sidecar container) runs ~2.5x over the original 32Mi
