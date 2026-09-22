@@ -56,3 +56,39 @@ def test_reuses_the_stored_password_without_writing_on_later_runs():
 
     assert module.canonical_debezium_password(secrets) == "already-there"
     assert secrets.put_calls == []
+
+
+class FakeConnection:
+    """Stands in for an asyncpg.Connection: .fetch() returns canned rows,
+    .execute() just records what it was called with."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.executed: list[tuple] = []
+
+    async def fetch(self, query, *args):
+        return self.rows
+
+    async def execute(self, query, *args):
+        self.executed.append((query, args))
+
+
+async def test_drops_every_slot_rds_has_marked_lost():
+    module = load_script()
+    conn = FakeConnection(
+        rows=[{"slot_name": "debezium_events"}, {"slot_name": "debezium_tenant_accounts"}]
+    )
+
+    await module.clear_lost_replication_slots(conn)
+
+    dropped = [args[0] for _query, args in conn.executed]
+    assert dropped == ["debezium_events", "debezium_tenant_accounts"]
+
+
+async def test_does_nothing_when_no_slot_is_lost():
+    module = load_script()
+    conn = FakeConnection(rows=[])
+
+    await module.clear_lost_replication_slots(conn)
+
+    assert conn.executed == []
