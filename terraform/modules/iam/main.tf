@@ -338,6 +338,32 @@ resource "aws_iam_role_policy_attachment" "bootstrap_master_secret" {
   policy_arn = aws_iam_policy.bootstrap_master_secret.arn
 }
 
+# Real gap found live (2026-09-22): this role was only ever given
+# GetSecretValue, never rds-db:connect. That made the script's IAM-first
+# attempt fail differently than intended — AWS rejects the IAM token before
+# Postgres even checks whether events has rds_iam, and that rejection comes
+# back as the same generic "PAM authentication failed" the code was trying
+# to distinguish from. Without this grant, the IAM path can never succeed,
+# so it can never observe the specific InvalidPasswordError that means
+# "not granted yet" — it always hits the broader error instead. Matches the
+# existing migration_rds_connect/dbt_rds_connect pattern for the same user.
+data "aws_iam_policy_document" "bootstrap_master_rds_connect" {
+  statement {
+    actions   = ["rds-db:connect"]
+    resources = ["arn:aws:rds-db:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:dbuser:${var.rds_resource_id}/events"]
+  }
+}
+
+resource "aws_iam_policy" "bootstrap_master_rds_connect" {
+  name   = "${var.name_prefix}-bootstrap-master-rds-connect"
+  policy = data.aws_iam_policy_document.bootstrap_master_rds_connect.json
+}
+
+resource "aws_iam_role_policy_attachment" "bootstrap_master_rds_connect" {
+  role       = aws_iam_role.bootstrap_master_irsa.name
+  policy_arn = aws_iam_policy.bootstrap_master_rds_connect.arn
+}
+
 # --- bootstrap Job 2: post-migration grants + the Debezium credential ---
 
 data "aws_iam_policy_document" "bootstrap_roles_irsa_trust" {
