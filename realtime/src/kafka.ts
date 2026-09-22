@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Kafka, type EachMessagePayload } from "kafkajs";
+import { Kafka, KafkaJSProtocolError, type EachMessagePayload } from "kafkajs";
 
 // A fresh, random group ID every startup — deliberately not shared across
 // pods. Kafka only splits partitions across members of the SAME group, so
@@ -24,6 +24,40 @@ export type ChangeHandler = (table: string, event: DebeziumEvent) => void;
 
 const TOPICS = ["cdc.public.events", "cdc.public.tenant_accounts"];
 
+// On a genuinely fresh database, Debezium's initial snapshot produces
+// nothing (no pre-existing rows to snapshot), so these topics don't exist
+// yet — Kafka only creates a topic once something actually produces to it,
+// which only happens once the seed/bootstrap sequence writes the first row.
+// kafkajs surfaces subscribing to a not-yet-created topic as a
+// KafkaJSProtocolError (type UNKNOWN_TOPIC_OR_PARTITION) rather than
+// retrying it internally, so this loop absorbs exactly that one error until
+// the topic exists. Observed live on a real from-zero `cluster-up`: this
+// resolved in under 2 minutes (4 kubelet restarts before this fix existed);
+// 10 minutes of headroom at 5s intervals is a generous multiple of that.
+// Any other error (bad broker address, auth failure, ...) still propagates
+// immediately — this is not a blanket retry-anything.
+async function subscribeWhenTopicsExist(topics: string[]): Promise<void> {
+    const maxAttempts = 120;
+    const delayMs = 5000;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            await consumer.subscribe({ topics, fromBeginning: false });
+            return;
+        } catch (err) {
+            const topicNotCreatedYet = err instanceof KafkaJSProtocolError && err.type === "UNKNOWN_TOPIC_OR_PARTITION";
+            if (!topicNotCreatedYet || attempt === maxAttempts) {
+                throw err;
+            }
+            console.warn(
+                `topics not created yet (attempt ${attempt}/${maxAttempts}) — Debezium hasn't produced to ` +
+                `${topics.join(", ")} on this database yet, retrying in ${delayMs}ms`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+    }
+}
+
 export async function startConsumer(onChange: ChangeHandler): Promise<void> {
     await consumer.connect();
     // fromBeginning: false — always a brand-new consumer group (random ID
@@ -31,7 +65,7 @@ export async function startConsumer(onChange: ChangeHandler): Promise<void> {
     // a live feed, not a durable projection: a newly connected pod should
     // only see events going forward, not replay history — GET /events
     // already answers "what happened before."
-    await consumer.subscribe({ topics: TOPICS, fromBeginning: false })
+    await subscribeWhenTopicsExist(TOPICS);
 
     await consumer.run({
         eachMessage: async ({ topic, message }: EachMessagePayload) => {

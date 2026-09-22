@@ -72,9 +72,21 @@ app.get("/stream/events", (req: Request, res: Response) => {
 });
 
 async function main(): Promise<void> {
-    await startConsumer(broadcast);
+    // Deliberately not awaited before listen(): the livenessProbe/
+    // readinessProbe both hit /healthz below, which only needs the HTTP
+    // server up, not the Kafka consumer. On a genuinely fresh cluster the
+    // consumer can spend real time retrying inside startConsumer (see
+    // subscribeWhenTopicsExist) while Debezium's first write is still
+    // pending — if that blocked listen(), the liveness probe would find
+    // nothing listening on the port at all and kubelet would restart the
+    // container on its own, independent of and defeating that retry logic.
     app.listen(port, () => {
         console.log(`realtime relay listening on ${port}`);
+    });
+
+    startConsumer(broadcast).catch((err) => {
+        console.error("fatal kafka consumer error", err);
+        process.exit(1);
     });
 }
 
