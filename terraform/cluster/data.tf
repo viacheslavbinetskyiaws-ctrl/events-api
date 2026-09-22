@@ -12,10 +12,6 @@ data "aws_iam_role" "github_bootstrap" {
   name = "events-api-github-bootstrap"
 }
 
-data "aws_secretsmanager_secret" "debezium" {
-  name = "events-api/debezium-replication"
-}
-
 data "aws_sns_topic" "dbt_build_alerts" {
   name = "events-api-dbt-build-alerts"
 }

@@ -24,48 +24,12 @@ jobs:
   build-push:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - repo: events-api-app
-            context: .
-            target: runtime
-          - repo: events-api-streaming
-            context: .
-            target: runtime-streaming
-          - repo: events-api-dbt
-            context: .
-            target: runtime-dbt
-          - repo: events-api-realtime
-            context: ./realtime
-            target: runtime
-          - repo: events-api-kafka-connect
-            context: ./kafka-connect
-            target: ""
-    steps:
-      - uses: actions/checkout@v7
-      - uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_ECR_PUSH_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-      - uses: aws-actions/amazon-ecr-login@v2
-        id: ecr
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/build-push-action@v7
-        with:
-          context: ${{ matrix.context }}
-          target: ${{ matrix.target }}
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ${{ steps.ecr.outputs.registry }}/${{ matrix.repo }}:${{ github.sha }}
-            ${{ steps.ecr.outputs.registry }}/${{ matrix.repo }}:latest
+    # ECR is ephemeral now (2026-09-22 cost decision: destroyed on every
+    # `down`, rebuilt as part of `cluster-up`) — this leg is a fast
+    # incremental refresh for whenever a cluster happens to already be up.
+    # If it's torn down right now, this fails loudly with nothing to push
+    # to, which is an honest, expected signal, not a bug to work around.
+    uses: ./.github/workflows/build-images.yaml
 
   deploy:
     if: github.event_name == 'workflow_dispatch'

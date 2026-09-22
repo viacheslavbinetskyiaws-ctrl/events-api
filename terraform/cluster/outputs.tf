@@ -69,3 +69,13 @@ output "bootstrap_master_irsa_role_arn" {
 output "bootstrap_roles_irsa_role_arn" {
   value = module.iam.bootstrap_roles_irsa_role_arn
 }
+
+output "ecr_repository_urls" {
+  description = "ECR repository URLs for all five project images"
+  value       = module.ecr.repository_urls
+}
+
+output "debezium_secret_arn" {
+  description = "Secrets Manager container for the debezium_replication password"
+  value       = aws_secretsmanager_secret.debezium.arn
+}

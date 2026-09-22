@@ -1,0 +1,63 @@
+name: Build and push images
+
+# Reusable workflow (workflow_call only, never runs on its own): the same
+# 5-image matrix that used to live only in ci.yaml's build-push job, called
+# from two places now that ECR is ephemeral (2026-09-22 cost decision):
+#   - ci.yaml, on every merge to main — fast incremental refresh while a
+#     cluster happens to be up. If ECR is currently torn down, this fails
+#     loudly (there's nothing to push to), which is an honest, expected
+#     signal, not a bug.
+#   - cluster-up.yaml, unconditionally, right after the infra job creates
+#     fresh (empty) repos and before the platform job tries to deploy
+#     anything — since a from-scratch ECR has no images at all otherwise.
+# Repository variables/secrets are inherited automatically from the caller
+# in the same repository; nothing needs to be passed explicitly.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - repo: events-api-app
+            context: .
+            target: runtime
+          - repo: events-api-streaming
+            context: .
+            target: runtime-streaming
+          - repo: events-api-dbt
+            context: .
+            target: runtime-dbt
+          - repo: events-api-realtime
+            context: ./realtime
+            target: runtime
+          - repo: events-api-kafka-connect
+            context: ./kafka-connect
+            target: ""
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ECR_PUSH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          target: ${{ matrix.target }}
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ matrix.repo }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ matrix.repo }}:latest

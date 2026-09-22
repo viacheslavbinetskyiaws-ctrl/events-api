@@ -52,8 +52,16 @@ jobs:
             echo "rds_master_secret_arn=$(terraform output -raw rds_master_user_secret_arn)"
           } >> "${GITHUB_OUTPUT}"
 
-  platform:
+  # ECR is ephemeral now (2026-09-22 cost decision: destroyed on every
+  # `down`, so `infra` above just created five empty repositories). This
+  # builds the five images fresh from whatever is on `main` right now,
+  # before `platform` tries to deploy any of them.
+  build-images:
     needs: infra
+    uses: ./.github/workflows/build-images.yaml
+
+  platform:
+    needs: [infra, build-images]
     runs-on: ubuntu-latest
     # No `environment:` on purpose: the bootstrap role trusts the main-branch
     # sub claim only, which a job without an environment presents.

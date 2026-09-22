@@ -5,6 +5,26 @@ module "networking" {
   name_prefix = "events-api"
 }
 
+module "ecr" {
+  source      = "../modules/ecr"
+  name_prefix = "events-api"
+}
+
+resource "aws_secretsmanager_secret" "debezium" {
+  name        = "events-api/debezium-replication"
+  description = "Password for the debezium_replication Postgres role. Value written by the cluster-up bootstrap Job, not by Terraform."
+
+  # Ephemeral by design (2026-09-22 cost decision): destroyed with the rest
+  # of the cluster on `down`. recovery_window_in_days = 0 skips Secrets
+  # Manager's default 30-day recovery window (confirmed against the provider
+  # docs: 0 forces deletion without recovery), which would otherwise reserve
+  # this exact name and block the very next `up` from recreating it. The
+  # password itself is disposable — Job 2 (bootstrap-roles) generates a
+  # fresh one whenever this container comes up empty, matching every other
+  # piece of state this project already treats as disposable on `down`.
+  recovery_window_in_days = 0
+}
+
 module "iam" {
   source = "../modules/iam"
 
@@ -16,7 +36,7 @@ module "iam" {
   rds_resource_id       = module.rds.resource_id
   rds_db_user           = "events_app"
   rds_master_secret_arn = module.rds.master_user_secret_arn
-  debezium_secret_arn   = data.aws_secretsmanager_secret.debezium.arn
+  debezium_secret_arn   = aws_secretsmanager_secret.debezium.arn
 }
 
 module "eks" {

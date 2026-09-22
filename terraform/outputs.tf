@@ -3,11 +3,6 @@ output "state_bucket_id" {
   value       = module.s3.bucket_id
 }
 
-output "ecr_repository_urls" {
-  description = "ECR repository URLs for all four project images"
-  value       = module.ecr.repository_urls
-}
-
 output "github_ecr_push_role_arn" {
   description = "OIDC-federated role GitHub Actions assumes to push images to ECR"
   value       = module.github_oidc.ecr_push_role_arn
@@ -31,9 +26,4 @@ output "github_terraform_plan_role_arn" {
 output "github_bootstrap_role_arn" {
   description = "OIDC-federated role GitHub Actions assumes for cluster-up/cluster-down Kubernetes work"
   value       = module.github_oidc.bootstrap_role_arn
-}
-
-output "debezium_secret_arn" {
-  description = "Secrets Manager container for the debezium_replication password"
-  value       = aws_secretsmanager_secret.debezium.arn
 }
