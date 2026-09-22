@@ -37,6 +37,13 @@ spec:
         - name: gcp-wif-credential-config
           mountPath: /mnt/gcp
     pod:
+      # Same fix, same PriorityClass, as the Kafka broker (aws-cdc/kafka-
+      # cluster.yaml): kube-prometheus-stack's Grafana/Prometheus tolerate
+      # this node's taint by design (spare-capacity access, decided and kept
+      # deliberately) and can land here first since Helm installs before
+      # Connect ever deploys. If they've taken the room Connect needs, this
+      # priority lets Connect preempt one of them rather than sit Pending.
+      priorityClassName: events-data-plane
       tolerations:
         - key: dedicated
           operator: Equal
