@@ -7,27 +7,38 @@ whole thing — API, data plane, streaming pipeline, analytics, infra, and CI/CD
 ## Data flow, end to end
 
 ```
-Client
-  │
-  ▼
-ALB  ──/stream/*───────────────▶ realtime (Node, 2 replicas, SSE)
-  │                                      ▲
-  │ /*                                   │ independent Kafka consumer
-  ▼                                      │ group per pod (fan-out, no Redis)
-events-api (FastAPI)                     │
-  │  RLS-scoped write                    │
-  ▼                                      │
-Postgres (RDS)                           │
-  │  WAL, logical replication            │
-  ▼                                      │
-Debezium (in Kafka Connect) ──▶ Kafka (Strimzi) ─┼──▶ streaming/ consumer ──▶ MongoDB
-                                                   └──▶ BigQuery sink connector ──▶ BigQuery
+Client ──ALB /*────────▶ events-api (FastAPI) ──RLS-scoped write──▶ Postgres (RDS)
+                                                                          │
+                                                    WAL, logical replication
+                                                                          ▼
+                                                Debezium (inside Kafka Connect)
+                                                                          │
+                                                                          ▼
+                                                             Kafka (Strimzi)
+                                                                          │
+                    ┌─────────────────────────────┬───────────────────────┴──────────────────────┐
+                    ▼                             ▼                                              ▼
+              realtime (SSE)              streaming/ consumer                        BigQuery sink connector
+        own consumer group per      events        tenant_accounts                    both tables, independently,
+        pod, independent of         │             │                                  into BigQuery
+        the two consumers to        ▼             ▼
+        the right — pushes to   MongoDB      Postgres
+        Client via ALB          event_       tenant_account_changes
+        GET /stream/events      properties   (audit log, dedup on
+                                (upsert by    Debezium's source_lsn)
+                                event id)
 
 dbt (hourly CronJob)
   reads Postgres  ──▶ daily_event_counts (Postgres mart)
   reads BigQuery  ──▶ bq_daily_event_counts (BigQuery mart)
   always         ──▶ data_quality_runs row, CloudWatch metric, /health/data-quality
 ```
+
+The three boxes under Kafka are three **independent** consumers reading the same topics in
+parallel — none of them talk to each other or feed into one another. `streaming/ consumer` is a
+single process that further splits by table (events → Mongo, tenant_accounts → a Postgres audit
+table); the BigQuery sink connector writes both tables into BigQuery on its own, unrelated to
+what the Python consumer does with them.
 
 One write (`POST /events`) fans out through **three** independent paths — the app's own
 Postgres row, a real-time push to any connected client, and two async analytics sinks — without
