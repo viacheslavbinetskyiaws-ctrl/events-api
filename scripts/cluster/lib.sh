@@ -99,3 +99,31 @@ connectors_running() {
 apply_overlay() {
   kubectl apply -k "${K8S_ROOT}/overlays/$1"
 }
+
+# helm_upgrade <release> <namespace> <chart> <helm-upgrade-args...>
+#
+# `helm upgrade --install ... --wait` can exit non-zero purely because its own
+# readiness *polling* ran past --timeout, even though the release itself was
+# already fully applied and healthy — observed live 2026-09-23:
+# community-operator's upgrade printed "Error: UPGRADE FAILED: context
+# deadline exceeded" and exited 1, while `helm status` showed STATUS: deployed
+# and the pods it manages were already Running/Ready. Under `set -euo
+# pipefail` that false failure kills the whole platform-up.sh run. This
+# treats "the release actually ended up deployed" as success regardless of
+# what the wait timeout reported; anything else (genuinely pending-upgrade or
+# failed) still fails loudly, unchanged.
+helm_upgrade() {
+  local release="$1" namespace="$2" chart="$3"
+  shift 3
+  if helm upgrade --install "${release}" "${chart}" -n "${namespace}" "$@"; then
+    return 0
+  fi
+  local status
+  status="$(helm status "${release}" -n "${namespace}" -o json 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["status"])' 2>/dev/null || true)"
+  if [[ "${status}" == "deployed" ]]; then
+    log "helm upgrade for ${release} reported a wait-timeout but the release is actually deployed - continuing"
+    return 0
+  fi
+  die "helm upgrade for ${release} failed and release status is '${status:-unknown}', not deployed"
+}

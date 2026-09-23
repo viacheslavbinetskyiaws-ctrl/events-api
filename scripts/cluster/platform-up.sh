@@ -41,25 +41,25 @@ stage_helm() {
   # IRSA-annotated ServiceAccount must exist before the chart is installed.
   apply_overlay aws-alb-controller
 
-  helm upgrade --install metrics-server metrics-server/metrics-server \
-    --version 3.14.0 -n kube-system \
+  helm_upgrade metrics-server kube-system metrics-server/metrics-server \
+    --version 3.14.0 \
     -f "${REPO_ROOT}/helm/metrics-server/values-override.yaml" \
     --wait --timeout "${HELM_TIMEOUT}"
-  helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
-    --version 3.5.0 -n kube-system \
+  helm_upgrade aws-load-balancer-controller kube-system eks/aws-load-balancer-controller \
+    --version 3.5.0 \
     -f "${REPO_ROOT}/helm/aws-load-balancer-controller/values-override.yaml" \
     --set clusterName="${CLUSTER_NAME}" --set region="${AWS_REGION}" \
     --wait --timeout "${HELM_TIMEOUT}"
-  helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator \
-    --version 1.2.0 -n events-api \
+  helm_upgrade strimzi-kafka-operator events-api strimzi/strimzi-kafka-operator \
+    --version 1.2.0 \
     -f "${REPO_ROOT}/helm/strimzi/values.yaml" \
     --wait --timeout "${HELM_TIMEOUT}"
-  helm upgrade --install community-operator mongodb/community-operator \
-    --version 0.13.0 -n events-api \
+  helm_upgrade community-operator events-api mongodb/community-operator \
+    --version 0.13.0 \
     -f "${REPO_ROOT}/helm/mongodb-community-operator/values-override.yaml" \
     --wait --timeout "${HELM_TIMEOUT}"
-  helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-    --version 90.0.0 -n monitoring \
+  helm_upgrade kube-prometheus-stack monitoring prometheus-community/kube-prometheus-stack \
+    --version 90.0.0 \
     -f "${REPO_ROOT}/helm/kube-prometheus-stack/values-override.yaml" \
     --wait --timeout "${HELM_TIMEOUT}"
 
