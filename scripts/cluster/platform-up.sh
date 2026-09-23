@@ -150,22 +150,12 @@ stage_seed() {
   wait_job events-api-seed 900
 }
 
-connectors_running() {
-  local out
-  out="$(kubectl get kafkaconnector -n "${NAMESPACE}" -o jsonpath='{range .items[*]}{.metadata.name}{"="}{.status.connectorStatus.connector.state}{" tasks="}{.status.connectorStatus.tasks[*].state}{"\n"}{end}')"
-  [[ "$(grep -c 'RUNNING' <<<"${out}")" -ge 4 ]] \
-    && ! grep -Eq 'FAILED|UNASSIGNED|PAUSED' <<<"${out}"
-}
-
 data_quality_ok() {
   kubectl exec deploy/events-api -n "${NAMESPACE}" -- python -c \
     "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/data-quality', timeout=10)"
 }
 
-alb_host() {
-  kubectl get ingress events-api -n "${NAMESPACE}" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-}
-
+# alb_host and connectors_running are shared with verify-e2e.sh — see lib.sh.
 alb_ok() {
   local host
   host="$(alb_host)"

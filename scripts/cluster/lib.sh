@@ -82,6 +82,20 @@ unsuspend_and_wait() {
   wait_job "$1" "$2"
 }
 
+# Shared between platform-up.sh's own (fast, non-mutating) stage_verify and
+# verify-e2e.sh's deeper, on-demand checks — one definition, not two copies
+# to keep in sync.
+alb_host() {
+  kubectl get ingress events-api -n "${NAMESPACE}" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+}
+
+connectors_running() {
+  local out
+  out="$(kubectl get kafkaconnector -n "${NAMESPACE}" -o jsonpath='{range .items[*]}{.metadata.name}{"="}{.status.connectorStatus.connector.state}{" tasks="}{.status.connectorStatus.tasks[*].state}{"\n"}{end}')"
+  [[ "$(grep -c 'RUNNING' <<<"${out}")" -ge 4 ]] \
+    && ! grep -Eq 'FAILED|UNASSIGNED|PAUSED' <<<"${out}"
+}
+
 apply_overlay() {
   kubectl apply -k "${K8S_ROOT}/overlays/$1"
 }

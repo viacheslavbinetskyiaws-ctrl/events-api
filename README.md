@@ -29,74 +29,24 @@ that ALB hostname is the app's public entrypoint once the run is green.
 
 ## Testing the full workflow
 
-This is the project's own acceptance bar (`docs/superpowers/specs/2026-09-19-ci-driven-bootstrap-design.md`),
-run after any `cluster-up`.
+`platform-up.sh`'s own last stage already checks pods, connectors, dbt, `/health/data-quality`
+and ALB reachability automatically on every `cluster-up` — that's the fast, non-mutating half of
+the project's acceptance bar (`docs/superpowers/specs/2026-09-19-ci-driven-bootstrap-design.md`).
 
-**1. Point `kubectl` at the new cluster and check for unhealthy pods:**
+For the deeper half — a real tenant, a real event, and proof that fan-out actually reaches two
+independent `realtime` pods rather than just one — run, any time after a `cluster-up`:
+
 ```bash
 aws eks update-kubeconfig --name events-api-eks --region eu-central-1 --profile events-api-tf
-kubectl get pods -A | grep -vE 'Running|Completed'
-```
-Expect only the header line — nothing `Pending`/`CrashLoopBackOff`.
-
-**2. Check the 4 Debezium/BigQuery connectors:**
-```bash
-kubectl get kafkaconnector -n events-api
-```
-Expect all 4 `READY  True`.
-
-**3. Check data quality (dbt build ran clean):**
-```bash
-curl -s "http://$(kubectl get ingress events-api -n events-api -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')/health/data-quality" | jq
-```
-Expect `200` with `passed: true`.
-
-**4. Exercise the app through the ALB — create a tenant, post an event, confirm SSE fan-out:**
-```bash
-ALB="http://$(kubectl get ingress events-api -n events-api -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
-
-TENANT_ID=$(curl -s -X POST "${ALB}/admin/tenants" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "verify-co", "plan_tier": "free"}' | jq -r .id)
-
-# Shell A — stream SSE for that tenant (leave running):
-curl -N -H "X-Tenant-ID: ${TENANT_ID}" "${ALB}/stream/events"
-```
-```bash
-# Shell B — post a real event:
-curl -X POST "${ALB}/events" \
-  -H "Content-Type: application/json" -H "X-Tenant-ID: ${TENANT_ID}" \
-  -d '{"event_type": "verify.manual", "user_id": "verify-user", "properties": {}}'
-```
-Shell A should print the event as a `data: {...}` line within seconds.
-
-**5. Prove independent fan-out (2 pods, not just the Service):** repeat step 4's SSE curl
-against each `realtime` pod individually — `kubectl port-forward` to a Service pins to one
-pod for the whole session, so this must be pod-to-pod:
-```bash
-PODS=($(kubectl get pods -n events-api -l app=realtime -o jsonpath='{.items[*].metadata.name}'))
-kubectl port-forward -n events-api "${PODS[0]}" 3001:3000 &
-kubectl port-forward -n events-api "${PODS[1]}" 3002:3000 &
-sleep 2
-curl -N -H "X-Tenant-ID: ${TENANT_ID}" http://localhost:3001/stream/events > /tmp/stream1.log &
-curl -N -H "X-Tenant-ID: ${TENANT_ID}" http://localhost:3002/stream/events > /tmp/stream2.log &
-sleep 2
-curl -X POST "${ALB}/events" -H "Content-Type: application/json" -H "X-Tenant-ID: ${TENANT_ID}" \
-  -d '{"event_type": "verify.fanout", "user_id": "verify-user", "properties": {}}'
-sleep 3
-diff /tmp/stream1.log /tmp/stream2.log && echo "IDENTICAL — fan-out confirmed"
-kill %1 %2 %3 %4 2>/dev/null
+./scripts/cluster/verify-e2e.sh
 ```
 
-**6. Confirm the CDC sinks got the same event** — the consumer's own log line for the Mongo
-projection, and a direct BigQuery query:
-```bash
-kubectl logs -n events-api deploy/cdc-consumer --tail=200 | grep "op=c into Mongo"
-```
-```bash
-bq query --use_legacy_sql=false \
-  'SELECT * FROM `events_analytics.events` WHERE user_id = "verify-user" ORDER BY occurred_at DESC LIMIT 1'
-```
+It creates a tenant, posts a real event through the ALB, port-forwards to each `realtime` pod
+individually (a `Service` port-forward pins to one pod for the whole session, which wouldn't
+prove two *different* pods got the broadcast) and diffs their SSE output, then confirms the same
+event landed in both CDC sinks — the `cdc-consumer`'s own Mongo-projection log line, and a row in
+`events_analytics.cdc_events` in BigQuery. Any step failing stops the script with that step's
+actual error, not a generic "something's wrong."
 
 ## Tearing everything down
 
