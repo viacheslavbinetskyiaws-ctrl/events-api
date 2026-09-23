@@ -86,3 +86,39 @@ jobs:
         run: aws eks update-kubeconfig --name "${CLUSTER_NAME}" --region "${AWS_REGION}"
       - name: Bring up the platform
         run: scripts/cluster/platform-up.sh
+
+  # The deep half of the acceptance bar (scripts/cluster/verify-e2e.sh):
+  # a real tenant, a real event, proof SSE fan-out reaches two independent
+  # realtime pods, and confirmation the same event lands in both CDC sinks.
+  # Separate job from `platform` on purpose — platform-up.sh's own
+  # stage_verify already runs the fast, non-mutating half (pods, connectors,
+  # dbt, data-quality, ALB) as part of bringing the platform up; this mutates
+  # real state (a tenant, an event) and needs GCP credentials `platform`
+  # doesn't, so it stays its own job rather than another platform-up.sh stage.
+  verify-e2e:
+    needs: [infra, platform]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLUSTER_NAME: ${{ needs.infra.outputs.cluster_name }}
+      AWS_REGION: ${{ needs.infra.outputs.region }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_BOOTSTRAP_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Point kubectl at the cluster
+        run: aws eks update-kubeconfig --name "${CLUSTER_NAME}" --region "${AWS_REGION}"
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          # bq isn't installed by default with the core SDK (confirmed
+          # against the action's own docs, not assumed) - verify-e2e.sh
+          # needs it for the BigQuery sink check.
+          install_components: "bq"
+      - name: Deep end-to-end verification
+        run: scripts/cluster/verify-e2e.sh
