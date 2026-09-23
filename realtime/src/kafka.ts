@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { Kafka, KafkaJSProtocolError, type EachMessagePayload } from "kafkajs";
+// kafkajs is CommonJS; Node's static cjs-module-lexer detects `Kafka` as a
+// named export but not `KafkaJSProtocolError` (crashed every pod on import
+// with "SyntaxError: Named export 'KafkaJSProtocolError' not found" —
+// tsc/tsdown both stayed clean since neither actually executes the compiled
+// output, only Node itself catches this). Importing the whole module as the
+// default and destructuring at runtime sidesteps that static analysis
+// entirely, exactly as Node's own error message suggests.
+import kafkajsPkg, { type EachMessagePayload } from "kafkajs";
+
+const { Kafka, KafkaJSProtocolError } = kafkajsPkg;
 
 // A fresh, random group ID every startup — deliberately not shared across
 // pods. Kafka only splits partitions across members of the SAME group, so
