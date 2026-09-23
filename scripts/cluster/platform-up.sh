@@ -155,6 +155,32 @@ data_quality_ok() {
     "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/data-quality', timeout=10)"
 }
 
+# assert_events_recent_volume (a real dbt test, dbt/tests/assert_events_recent_volume.sql)
+# fails whenever there's been event volume in the last 7 days (true from the
+# one-time seed onward) but nothing ingested in the last hour - a real,
+# valuable signal in ongoing operation (the CDC pipeline going quiet), but a
+# guaranteed false positive for this stage's one-time bootstrap dbt trigger:
+# a freshly created cluster has no continuous traffic generator, and by the
+# time this stage runs (after Helm, bootstrap Jobs, Kafka Connect, seed -
+# routinely over an hour on a cold cluster-up) the seed insert is already
+# stale. Posting one real event right before the dbt run satisfies the test
+# for the same reason real traffic would, not by working around it: the row
+# is committed with ingested_at = now() the instant this call returns, no
+# CDC/Kafka propagation wait needed since the test reads the app's own
+# Postgres source table directly, never a downstream sink.
+post_keepalive_event() {
+  kubectl exec deploy/events-api -n "${NAMESPACE}" -- python -c "
+import json, urllib.request, uuid
+req = urllib.request.Request(
+    'http://localhost:8000/events',
+    data=json.dumps({'event_type': 'cluster-up.keepalive', 'user_id': 'cluster-up', 'properties': {}}).encode(),
+    headers={'Content-Type': 'application/json', 'X-Tenant-ID': str(uuid.uuid4())},
+    method='POST',
+)
+urllib.request.urlopen(req, timeout=10)
+"
+}
+
 # alb_host and connectors_running are shared with verify-e2e.sh — see lib.sh.
 alb_ok() {
   local host
@@ -176,6 +202,7 @@ stage_verify() {
 
   # /health/data-quality returns 503 until a dbt run has published a report
   # (fail-closed by design), so the run is required, not optional.
+  post_keepalive_event
   local run
   run="dbt-build-bootstrap-$(date +%s)"
   kubectl create job "${run}" --from=cronjob/dbt-build -n "${NAMESPACE}"
