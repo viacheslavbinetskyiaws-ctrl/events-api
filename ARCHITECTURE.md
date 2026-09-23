@@ -92,14 +92,24 @@ later never means touching `app/` again — it means registering another consume
   its own dedicated/tainted node (`terraform/modules/eks`'s `kafka_connect` node pool) so its
   memory footprint never competes with everything else.
 - **`streaming/consumer.py`** — a standalone Python process (own `streaming` extra, never
-  imported by `app/`) that reads both CDC topics and projects `events` rows into **MongoDB**
-  (`streaming/mongo.py`), idempotently (`ON CONFLICT`/upsert-by-id, so a re-delivered message is
-  a safe no-op). Why Mongo specifically: a schemaless audit/history store, decoupled from the
-  relational OLTP schema — this doc-store projection can evolve its own shape without an Alembic
-  migration.
-- **The BigQuery sink connector** (`com.wepay.kafka.connect.bigquery`) writes the same two
-  topics into `events_analytics.cdc_events` / `cdc_tenant_accounts` in **BigQuery** — the OLAP
-  warehouse dbt's `bigquery/` models build on top of.
+  imported by `app/`) that reads both CDC topics but routes them to two *different* stores,
+  dispatched by table name:
+  - `events` → **MongoDB** (`streaming/mongo.py`, database `events_projection`, collection
+    `event_properties`) — one document per event, `_id` = the event's own id, upserted
+    (idempotent by construction: replaying the same document just overwrites it with itself).
+    Deletes are mirrored too. Why Mongo specifically for this one: a schemaless projection,
+    decoupled from the relational OLTP schema, that can evolve its own document shape without
+    an Alembic migration.
+  - `tenant_accounts` → a **Postgres** table (`tenant_account_changes`, `TenantAccountChangeORM`)
+    — an append-only audit log, deduplicated on `source_lsn` (Debezium's own log sequence
+    number) via `ON CONFLICT DO NOTHING`, since a replay needs an explicit dedup key here rather
+    than natural upsert idempotency.
+- **The BigQuery sink connector** (`com.wepay.kafka.connect.bigquery`) writes *both* topics —
+  unlike the Mongo/Postgres split above — into `events_analytics.cdc_events` /
+  `cdc_tenant_accounts` in **BigQuery**, the OLAP warehouse dbt's `bigquery/` models build on
+  top of (plus the mart they produce, `bq_daily_event_counts`). BigQuery ends up with the
+  complete mirror of everything; Mongo and the audit table each get only the one table they're
+  actually meant for.
 
 ## Real-time layer — `realtime/`
 
